@@ -1,0 +1,9 @@
+{
+  "name": "com.omarchy.copy_url",
+  "description": "Omarchy Copy URL clipboard host",
+  "path": "/usr/share/omarchy/bin/omarchy-chromium-copy-url-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://bgpiichlckmfanooecilcjemknkcpngb/"
+  ]
+}

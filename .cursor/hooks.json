@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "if [ -f '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/cursor-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/cursor-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": "if [ -f '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/cursor-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/cursor-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+        "timeout": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "if [ -f '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/cursor-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/cursor-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+        "timeout": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "if [ -f '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/cursor-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/cursor-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+        "timeout": 10
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "if [ -f '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/cursor-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/cursor-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+        "timeout": 10
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "if [ -f '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/cursor-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/cursor-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+        "timeout": 10
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "if [ -f '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/cursor-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/cursor-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+        "timeout": 10
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "if [ -f '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/cursor-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/cursor-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/cursor-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+        "timeout": 10
+      }
+    ]
+  },
+  "version": 1
+}
