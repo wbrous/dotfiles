@@ -1,0 +1,32 @@
+providers: 
+  {}
+symbolPreset: nerd
+theme: 
+  dark: dark-nord
+  light: light
+setupVersion: 1
+modelRoles: 
+  plan: anthropic/claude-sonnet-5:high
+  tiny: opencode-go/deepseek-v4-flash:xhigh
+  slow: anthropic/claude-sonnet-5:medium
+  default: anthropic/claude-sonnet-5:medium
+  smol: opencode-go/deepseek-v4-flash:max
+  vision: opencode-go/qwen3.7-plus:medium
+  designer: anthropic/claude-sonnet-5:high
+  advisor: anthropic/claude-opus-5:medium
+  commit: opencode-go/deepseek-v4-flash:high
+  task: opencode-go/deepseek-v4-flash:xhigh
+defaultThinkingLevel: auto
+retry: 
+  fallbackChains: 
+    {}
+externalThinking: true
+personality: pragmatic
+steeringMode: all
+autolearn: 
+  enabled: true
+  autoContinue: true
+memory: 
+  backend: "off"
+github: 
+  enabled: true
