@@ -1,0 +1,42 @@
+{
+  "ui_font_family": ".ZedSans",
+  "buffer_font_family": "JetBrainsMono Nerd Font",
+  "terminal": {
+    "font_family": "JetBrainsMono Nerd Font"
+  },
+  "agent_servers": {
+    "OhMyPi": {
+      "default_config_options": {
+        "thinking": "low",
+        "model": "anthropic/claude-sonnet-5",
+        "mode": "default"
+      },
+      "type": "custom",
+      "command": "/home/wils/.cache/.bun/bin/omp",
+      "args": [
+        "acp"
+      ]
+    }
+  },
+  "language_models": {
+    "opencode": { "show_zen_models": false },
+    "openai_compatible": {},
+  },
+  "agent": {
+    "tool_permissions": {
+      "default": "allow",
+      "tools": {}
+    },
+    "default_model": {
+      "effort": "high",
+      "provider": "zed.dev",
+      "model": "claude-sonnet-5",
+      "enable_thinking": true,
+    },
+    "favorite_models": [],
+    "model_parameters": [],
+  },
+  "cli_default_open_behavior": "existing_window",
+  "icon_theme": "JetBrains New UI Icons (Dark)",
+  "theme": "Carbonfox - blurred",
+}
