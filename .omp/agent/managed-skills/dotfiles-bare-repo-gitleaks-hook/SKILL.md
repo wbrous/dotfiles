@@ -1,31 +1,43 @@
 ---
 name: dotfiles-bare-repo-gitleaks-hook
-description: "Use when setting up a public dotfiles git repo via the bare-repo + worktree trick (git --git-dir=$HOME/.dotfiles --work-tree=$HOME), or wiring a gitleaks pre-commit hook for it — covers the status.showUntrackedFiles trick to avoid tracking every file, the modern gitleaks CLI (protect deprecated; use git diff --staged | gitleaks stdin), the core.hooksPath global-config collision that silently disables repo-local hooks, wiring gitleaks as a new file inside an existing global hooks dir instead of overriding hooksPath (preserves other global hooks like a prepare-commit-msg signoff/co-author trailer), a GIT_ALLOW_SECRETS=1 deliberate-bypass env var, and the gotcha that prepare-commit-msg hooks are silent (test by reading the actual commit message body, not console output)."
+description: "Use when setting up a public dotfiles git repo via the bare-repo + worktree trick (git --git-dir=$HOME/.dotfiles --work-tree=$HOME), or wiring a gitleaks pre-commit hook for it — covers the status.showUntrackedFiles trick to avoid tracking every file, the modern gitleaks CLI (protect deprecated; use git diff --staged | gitleaks stdin), the core.hooksPath global-config collision that silently disables repo-local hooks, wiring gitleaks as a new file inside an existing global hooks dir instead of overriding hooksPath (preserves other global hooks like a prepare-commit-msg signoff/co-author trailer), a GIT_ALLOW_SECRETS=1 deliberate-bypass env var, and the fan-out scout survey workflow for batch-adding a large existing ~/.config tree (including that AI-tool MCP config files like mcp.json routinely embed live API keys/PATs and must be excluded or templated)."
 ---
 
-## Bare repo setup
+## Setup
+
 ```bash
 git init --bare $HOME/.dotfiles
 alias dotfiles='git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 dotfiles config --local status.showUntrackedFiles no
 ```
-`status.showUntrackedFiles no` = only explicitly `dotfiles add <path>`ed files ever show up in `status`/get committed. This is the real safety mechanism against "track 999999 files" — not `.gitignore` maintenance, deliberate one-file-at-a-time `add`.
 
-Add files one at a time, review each for secrets before adding (`grep -riE 'token|secret|key|password' <file>`), never `add -A` / `add .`.
+`status.showUntrackedFiles no` means only explicitly `dotfiles add`ed files ever show up — no accidental mass-add, no `.gitignore` maintenance. Always add one file/dir at a time, never `add -A`/`add .`.
 
-## gitleaks CLI: `protect` deprecated
-Modern gitleaks (v8.20+) only has `dir`/`git`/`stdin` subcommands. `gitleaks protect --staged` may still run but is unreliable/removed depending on version — don't rely on it. Use:
+For scripting (no shell alias available), use env vars instead of an alias:
+```bash
+GIT_DIR=$HOME/.dotfiles GIT_WORK_TREE=$HOME git <cmd>
+```
+
+## gitleaks hook — modern CLI, no `protect` subcommand
+
+Newer gitleaks versions dropped `detect`/`protect` from `--help` (only `dir`/`git`/`stdin`/`completion`/`version` listed). `gitleaks protect --staged` may still nominally run but its internal git invocation breaks under custom `GIT_DIR`/`GIT_WORK_TREE` env (`error: unknown option 'staged'` from a mis-invoked `git diff --no-index`). Skip gitleaks' internal git call entirely — pipe the diff in yourself:
+
 ```bash
 git diff --staged | gitleaks stdin --redact -v
 ```
-This also sidesteps custom `GIT_DIR`/`GIT_WORK_TREE` env vars breaking gitleaks' own internal git invocation (symptom: `error: unknown option 'staged'` fed into a plain `git diff --no-index` usage dump — gitleaks shelled out to git wrong under custom env).
 
-## CRITICAL gotcha: `core.hooksPath` is global and NOT additive
-If the user already has `core.hooksPath` set unconditionally in `~/.config/git/config` (e.g. for a `prepare-commit-msg` hook adding Signed-off-by/co-author trailers — see `git-scoped-coauthor-trailer` skill), that path applies to **every** repo including a new bare dotfiles repo. Setting a **local** `core.hooksPath` override on the dotfiles repo to point at its own `hooks/` dir will silently **kill** the global hook for that repo — it's a full replacement, not additive, since it's a single-value config key.
+## Critical gotcha: global `core.hooksPath` silently kills repo-local hooks
 
-**Correct fix: don't override hooksPath at all.** Add gitleaks as a NEW file (`pre-commit`) directly inside the *existing* global hooks dir (e.g. `~/.config/git/hooks/pre-commit`), alongside whatever's already there (`prepare-commit-msg` etc.) — different hook name, no collision, no permission conflict even if the existing hook file is root-locked.
+If `~/.config/git/config` sets `core.hooksPath` unconditionally (e.g. for a global signoff/co-author `prepare-commit-msg` hook — see `git-scoped-coauthor-trailer` skill), a bare repo's local `hooks/` dir is **never consulted** — `core.hooksPath` is a single-value key, local repo config silently overrides global, not merges with it. Symptom: a hand-rolled `.dotfiles/hooks/pre-commit` never fires, with no error — `prepare-commit-msg`-injected trailers (e.g. `Signed-off-by:`) silently vanish from commits in that repo.
 
-By default this scans **every** repo's staged diff pre-commit, which is usually what you actually want for secret-leak protection generally. Add a deliberate bypass:
+**Wrong fix**: setting `core.hooksPath` locally on the bare repo to point elsewhere — this fixes the gitleaks hook but kills the global `prepare-commit-msg` hook for that repo (different single-value key collision, same root cause).
+
+**Right fix**: don't touch `hooksPath` at all. Add a **new file** with a different hook name into the *existing* global hooks dir (`~/.config/git/hooks/pre-commit`, alongside `prepare-commit-msg`) — git hook filenames don't collide with each other, and both fire independently from the same `hooksPath`. Verify by checking `git log -1 --format=%B` for the trailer (not just console noise — `prepare-commit-msg` silently rewrites the message file, it doesn't print anything, so absence of console output is NOT proof it didn't run).
+
+## Global bypass flag
+
+Scope the gitleaks hook globally (fires in every repo on the machine, not just `.dotfiles`) with a deliberate escape hatch:
+
 ```sh
 #!/bin/sh
 if [ "${GIT_ALLOW_SECRETS:-}" = "1" ]; then
@@ -39,20 +51,19 @@ if [ $? -ne 0 ]; then
 fi
 exit 0
 ```
-`chmod +x`. Usage to intentionally commit something gitleaks false-positives on: `GIT_ALLOW_SECRETS=1 git commit -m "..."`.
+Usage: `GIT_ALLOW_SECRETS=1 git commit -m "..."`. Named `GIT_ALLOW_SECRETS` (not `ALLOW_SECRETS`) to avoid ambiguity with unrelated env vars.
 
-(If truly need per-repo scoping instead of global scanning, add a `GIT_DIR_ABS` check inside the script comparing `git rev-parse --git-dir` resolved to an absolute path, rather than touching `hooksPath`.)
+## Verification matrix (don't skip any leg)
 
-## Testing gotcha: `prepare-commit-msg` hooks are silent
-`prepare-commit-msg` edits the commit message file directly — it prints nothing to console on success. Don't verify "did the global hook still fire" by eyeballing command output (that only proves whatever hook *did* run, e.g. gitleaks' banner) — read the actual commit body:
-```bash
-git log -1 --format=%B
-```
-A false "still works" conclusion from absence-of-console-noise is a real trap — verify by content, not silence.
+1. Real secret (properly-shaped, e.g. `AKIA` + 16 alnum for AWS — a too-long or literal AWS-doc-example key gives a false negative) → commit blocked, exit 1, nothing lands (`git log` unchanged).
+2. Clean file → commit succeeds, `Signed-off-by`/other trailer present in `git log -1 --format=%B`.
+3. `GIT_ALLOW_SECRETS=1` bypass → commit succeeds even with a real secret staged.
+4. An unrelated repo (`/tmp/testrepo`, `git init`) → confirm scoping/global behavior matches intent.
 
-## Verification matrix (run for real, don't assume)
-1. Fake-secret file, correctly shaped (e.g. `AKIA` + 16 alnum for AWS — AWS's own placeholder example `AKIAIOSFODNN7EXAMPLE` is allowlisted by gitleaks and gives a false negative if reused verbatim) → commit should be blocked, exit nonzero, `git log` unchanged.
-2. Clean file → commit succeeds, `git log -1 --format=%B` shows the expected trailer(s) intact.
-3. Bypass env var → commit succeeds even with the fake secret present.
-4. A different, unrelated repo (`mkdir -p /tmp/x && git init`) → confirm global-hooks-dir hooks (trailer, gitleaks if globally scoped) still apply there too, and any repo-scoping logic behaves as designed.
-Clean up test repos (`rm -rf`) and unstage/reset any test commits after.
+## Fan-out scout survey for curating a large existing ~/.config tree
+
+For a home directory with 100+ `.config` entries plus dozens of top-level dotfiles/dirs, don't read them all yourself — fan out ~8 scout subagents in parallel, each covering a cluster of paths, each producing one-line-per-path verdicts: `DEF ADD` (clean, useful) / `MAYBE` (needs scrub or is a judgment call) / `SHOULDN'T ADD` (secrets or account/session data) / `COULD GO` (stale cruft, e.g. `*.bak` files unrelated to the git decision). Explicitly instruct scouts to grep for secret patterns (`token|secret|password|api[_-]?key|auth|credential|bearer`) and to name-but-not-reproduce any found value.
+
+Recurring finding: **AI coding-tool config directories are secret minefields.** `~/.claude.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`, `~/.config/opencode/opencode.json`, and especially a harness's `mcp.json` routinely embed live plaintext API keys/PATs (Context7 `ctx7sk-*`, Figma `figd_*`, GitHub `ghp_*`, GitLab `glpat-*`) directly in `mcpServers`/`env` blocks — these are almost never safe to commit as-is; the same key is often duplicated across 3+ of these files. A clean subset (e.g. `hooks.json`, `AGENTS.md`, `config.yml`, or a `managed-skills/` library dir with no embedded credentials) frequently coexists in the same tool's config dir and can be cherry-picked. A tool's actual persistent skill/knowledge library (e.g. `~/.omp/agent/managed-skills/*/SKILL.md`) is usually pure text and safe — grep it too, but expect false positives from skill descriptions merely *mentioning* the words "token"/"api_key" in prose (verify each hit is a real embedded value, not documentation).
+
+Also check subdirectories one level deeper than a single scout pass might catch (e.g. an app's `plugin_config/<x>/config.json` holding a password) even when the top-level directory looks like plain config — recurse into likely secret-bearing filenames (`obs-websocket/config.json`, `.docker/.token_seed`, browser NMH manifest dirs) explicitly.
