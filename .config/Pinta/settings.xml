@@ -12,7 +12,7 @@
   <setting name="statusbar-shown" type="System.Boolean">True</setting>
   <setting name="toolbox-shown" type="System.Boolean">True</setting>
   <setting name="last-dialog-directory" type="System.String">file:///home/wils/Pictures</setting>
-  <setting name="last-selected-tool" type="System.String">PaintBrushTool</setting>
+  <setting name="last-selected-tool" type="System.String">RectangleSelectTool</setting>
   <setting name="primary-color" type="System.String">FF000000</setting>
   <setting name="secondary-color" type="System.String">FFFFFFFF</setting>
   <setting name="recently-used-colors" type="System.String">FFE6E6E6,FFE6E6E6,FFE6E6E6,FFE6E6E6,FFE6E6E6,FFE6E6E6,FFE6E6E6,FFE6E6E6,FFE6E6E6,FFE6E6E6</setting>
@@ -24,4 +24,10 @@
   <setting name="freeformshapetool-brush-width" type="System.Int32">2</setting>
   <setting name="clonestamptool-brush-width" type="System.Int32">2</setting>
   <setting name="recolortool-brush-width" type="System.Int32">2</setting>
+  <setting name="selection-combine-mode" type="System.Int32">0</setting>
+  <setting name="lasso-mode" type="System.Int32">0</setting>
+  <setting name="erasertool-antialias" type="System.Int32">0</setting>
+  <setting name="eraser-erase-type" type="System.Int32">0</setting>
+  <setting name="paintbuckettool-fill-mode" type="System.Int32">0</setting>
+  <setting name="paintbuckettool-fill-tolerance" type="System.Int32">0</setting>
 </settings>

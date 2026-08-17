@@ -60,6 +60,7 @@ x-scheme-handler/itunes=cider.desktop
 x-scheme-handler/claude-cli=claude-code-url-handler.desktop
 x-scheme-handler/jetbrains=jetbrainsd.desktop
 text/markdown=omawrite.desktop
+x-scheme-handler/figma=figma-linux.desktop
 
 [Added Associations]
 x-scheme-handler/http=zen.desktop;

@@ -1,6 +1,6 @@
 ---
 name: git-scoped-coauthor-trailer
-description: "Use when the user wants every commit under specific project folders OR repos owned by a specific remote account (GitHub/GitLab user) to automatically get a Co-authored-by trailer (or similar always-on commit message addition), distinguished between AI-agent-driven commits vs the user's own manual commits, without cluttering ~/ with new dotfiles. Covers git worktrees checked out outside the scoped path, multiple scopes each with a different co-author, scoping by remote URL owner (hasconfig:remote.*.url), and a global Signed-off-by trailer gated on GPG-key presence."
+description: "Use when the user wants every commit under specific project folders OR repos owned by a specific remote account (GitHub/GitLab user) to automatically get a Co-authored-by trailer (or similar always-on commit message addition), distinguished between AI-agent-driven commits vs the user's own manual commits, without cluttering ~/ with new dotfiles. Covers git worktrees checked out outside the scoped path, multiple scopes each with a different co-author, scoping by remote URL owner (hasconfig:remote.*.url), a global Signed-off-by trailer gated on GPG-key presence, and the shared append_trailer() helper that prevents a blank line appearing between Co-authored-by and Signed-off-by when both fire on the same commit."
 ---
 
 ## Goal
@@ -25,6 +25,44 @@ Hook checks: `COAUTHOR_TRAILER="$(git config --get coauthor-hook.trailer)"`; onl
 
 Adding a new scope later = one new `~/.config/git/<name>-config` file (just `[coauthor-hook]\n\ttrailer = ...`) + one `includeIf` block appended to the real config. No hook script edits needed.
 
+## Trailer appending: shared `append_trailer()` helper (avoid the blank-line-between-trailers bug)
+Original design had two *independent* blocks each doing `grep -qF "$T" "$MSG_FILE" || printf '\n%s\n' "$T" >> "$MSG_FILE"`. When both the co-author trailer (block 1) and the signoff trailer (block 2) fire on the same commit, each one unconditionally prepends its own blank line — the result is a blank line sitting *between* `Co-authored-by:` and `Signed-off-by:`, not just before the trailer block. Standard git trailer formatting wants exactly one blank line separating the message body from the trailer block, then trailers stacked with no blank lines between them.
+
+Fix: both blocks call one shared helper instead of duplicating the `printf`:
+```sh
+# Append TRAILER on its own line. A single blank line separates the message
+# body from the trailer block, but trailers stack directly on top of each
+# other with no blank line in between (matches git trailer convention).
+append_trailer() {
+  trailer="$1"
+  grep -qF "$trailer" "$MSG_FILE" && return
+  if [ -s "$MSG_FILE" ] && [ "$TRAILER_BLOCK_STARTED" != "1" ]; then
+    printf '\n' >> "$MSG_FILE"
+  fi
+  printf '%s\n' "$trailer" >> "$MSG_FILE"
+  TRAILER_BLOCK_STARTED=1
+}
+```
+`TRAILER_BLOCK_STARTED` is a plain shell variable set after the first successful append within a single hook invocation (each `prepare-commit-msg` run is a fresh process, so no cross-commit leakage risk) — it gates the blank-line insertion to "first trailer only", regardless of which block (co-author vs signoff) runs first or whether only one of them fires. Both call sites become one-liners: `append_trailer "$COAUTHOR_TRAILER"` / `append_trailer "$SIGNOFF_TRAILER"`.
+
+Verify the fix directly against the hook script (no real commit needed) by faking `git config` / `gpg` lookups:
+```sh
+cat > /tmp/fakebin/git <<'EOF'
+#!/bin/sh
+case "$*" in
+  "config --get coauthor-hook.trailer") echo "Co-authored-by: NAME <email>";;
+  "config --get commit.gpgsign") echo "true";;
+  "config --get user.signingkey") echo "FAKEKEY";;
+  *) exit 1;;
+esac
+EOF
+chmod +x /tmp/fakebin/git
+printf 'sec:fake\n' > /tmp/fakebin/gpg-stub  # or a tiny gpg shim that prints "sec:fake"
+tmpmsg=$(mktemp); printf 'subject\n\nbody\n' > "$tmpmsg"
+PATH=/tmp/fakebin:$PATH OMPCODE=1 ~/.config/git/hooks/prepare-commit-msg "$tmpmsg" message
+cat -A "$tmpmsg"   # expect exactly ONE blank line before the trailer block, none between trailers
+```
+
 ## Signed-off-by trailer: global (every repo), gated on GPG-key presence, NOT sudo
 Superseded an earlier sudo-gated design (`sudo -v` inside the hook) — dropped in favor of gating on whether the commit will actually be GPG-signed:
 ```sh
@@ -32,8 +70,7 @@ GPG_SIGN_ENABLED="$(git config --get commit.gpgsign)"
 SIGNKEY="$(git config --get user.signingkey)"
 if [ "$GPG_SIGN_ENABLED" = "true" ] && [ -n "$SIGNKEY" ] \
    && gpg --list-secret-keys --with-colons "$SIGNKEY" 2>/dev/null | grep -q '^sec'; then
-  SIGNOFF_TRAILER="Signed-off-by: NAME <email>"
-  grep -qF "$SIGNOFF_TRAILER" "$MSG_FILE" || printf '\n%s\n' "$SIGNOFF_TRAILER" >> "$MSG_FILE"
+  append_trailer "Signed-off-by: NAME <email>"
 fi
 ```
 No `exit 1` on failure here — this block never blocks a commit; it just conditionally appends text. If a specific repo has `commit.gpgsign=false` locally, or the signing key's secret half isn't present, the trailer is silently skipped.
@@ -68,7 +105,7 @@ The journal is binary — you cannot `sed`/`perl` a string out of it. Remove who
 ## Where files live — do NOT scatter into ~
 1. Check `~/.config/git/config` exists first (XDG git config). NEVER create `~/.gitconfig` if it already exists.
 2. Put everything under `~/.config/git/`:
-   - `hooks/prepare-commit-msg` — the ONE shared hook (config-driven co-author + global GPG-gated signoff); optionally root-locked
+   - `hooks/prepare-commit-msg` — the ONE shared hook (config-driven co-author + global GPG-gated signoff, via the shared `append_trailer()` helper above); optionally root-locked
    - `<scope>-config` — one small file per scope, just `[coauthor-hook]\n\ttrailer = Co-authored-by: NAME <email>`
    - `[core]\n\thooksPath = ~/.config/git/hooks` unconditionally at top of the real config
    - one `includeIf` block per scope (either `gitdir:` or `hasconfig:remote.*.url:`), appended, never clobbering
@@ -77,4 +114,4 @@ The journal is binary — you cannot `sed`/`perl` a string out of it. Remove who
 4. Relocate any stray `~/.gitconfig`/`~/.githooks/` files into `~/.config/git/` if they were created by mistake.
 
 ## Verification
-Test the full matrix and clean up after: outside-scope repo (signoff only), in-scope omp-style commit (both trailers), in-scope manual commit (`env -u OMPCODE`, signoff only). For remote-owner scoping, also test the negative case (a repo with a non-matching remote returns no `coauthor-hook.trailer`). Confirm the signature is real via `git log --show-signature -1` (`gpg: Good signature from "..."`).
+Test the full matrix and clean up after: outside-scope repo (signoff only), in-scope omp-style commit (both trailers, exactly one blank line before the block and none between the two trailer lines), in-scope manual commit (`env -u OMPCODE`, signoff only). For remote-owner scoping, also test the negative case (a repo with a non-matching remote returns no `coauthor-hook.trailer`). Confirm the signature is real via `git log --show-signature -1` (`gpg: Good signature from "..."`).

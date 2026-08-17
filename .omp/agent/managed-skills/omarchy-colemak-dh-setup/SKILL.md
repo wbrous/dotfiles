@@ -1,58 +1,29 @@
 ---
 name: omarchy-colemak-dh-setup
-description: "Use when switching an Omarchy/Hyprland system keyboard layout to Colemak-DH (or adding a second/alt layout with a switch hotkey), or when hjkl-style navigation in Neovim needs to keep working after such a layout change."
+description: "Use when switching an Omarchy/Hyprland system keyboard layout to Colemak-DH (or adding a second/alt layout with a switch hotkey), toggling/disabling it temporarily, or when hjkl-style navigation in Neovim needs to keep working after such a layout change."
 ---
 
-## Switching system layout to Colemak-DH (Hyprland/Omarchy)
+Config file location (this machine): `~/.config/hypr/input.lua`, NOT `input.conf` — despite what filename you'd expect, Omarchy's Hyprland config here is Lua-based (`hl.config({ input = { ... } })`), not the classic `.conf` ini-style. Always `glob ~/.config/hypr/*.conf` first if unsure; `input.conf` may not exist even though `hyprlock.conf`/`hypridle.conf` do.
 
-Edit `~/.config/hypr/input.lua`, inside `hl.config({ input = { ... } })`:
-
+Two-layout Colemak-DH setup pattern in `input.lua`:
 ```lua
 kb_layout = "us,us",
 kb_variant = "colemak_dh,",
 kb_options = "caps:backspace,grp:alts_toggle",
 ```
+- `grp:alts_toggle` binds Left Alt + Right Alt to switch between the two layout slots.
+- Second `us` slot + `colemak_dh,` variant (note trailing comma, second slot has no variant) gives you US-QWERTY on slot 1, Colemak-DH on slot 2.
 
-- First layout/variant pair is Colemak-DH, second is plain QWERTY (empty variant).
-- `grp:alts_toggle` = switch layouts with **Left Alt + Right Alt** pressed together.
-  Do NOT use `grp:alt_switch` — not a valid xkb option name. Valid grp option names
-  live in `/usr/share/X11/xkb/rules/base.lst` (grep `grp:`) — check there when unsure,
-  e.g. `grp:toggle` = Right Alt alone, `grp:lalt_toggle` = Left Alt alone,
-  `grp:alt_shift_toggle` = Alt+Shift, etc.
-- Apply with `hyprctl reload`; verify with `hyprctl configerrors` (expect `ok`) and
-  `hyprctl devices -j` (look at each keyboard's `active_keymap`).
+To temporarily disable Colemak-DH (revert to plain single-layout US) without losing the setup for later restoration: comment out the three multi-layout lines with `--` and replace with plain single-layout equivalents directly below:
+```lua
+-- kb_layout = "us,us",
+-- kb_variant = "colemak_dh,",
+-- kb_options = "caps:backspace,grp:alts_toggle",
+kb_layout = "us",
+kb_options = "caps:backspace",
+```
+Drop `kb_variant` entirely (US has none) and drop `grp:alts_toggle` from `kb_options` (no second layout to toggle to). Restore later by deleting the two plain lines and uncommenting the three original ones.
 
-## Why Neovim's hjkl breaks under Colemak-DH
+Apply changes live with `hyprctl reload` (no logout/relogin needed).
 
-Colemak-DH remaps physical key *positions*, not characters typed. The physical
-h/j/k/l keys now emit different characters:
-- physical h-key → types `m`
-- physical j-key → types `n`
-- physical k-key → types `e`
-- physical l-key → types `i`
-
-Vim motions are bound by character, not physical key, so pressing the physical
-hjkl block runs vim's default `m`/`n`/`e`/`i` commands (mark/search-next/end-word/
-insert) instead of moving the cursor.
-
-Fix: bidirectionally swap each pair (`h↔m`, `j↔n`, `k↔e`, `l↔i`, + uppercase) via
-`vim.keymap.set` in normal/visual/operator-pending modes. This is layout-agnostic
-(works regardless of where the displaced letters physically land) and lossless —
-displaced commands remain reachable via whatever key now emits their letter.
-
-Built exactly this as a self-contained LazyVim module at
-`~/.config/nvim/lua/colemak-dh/init.lua` (public `setup()`/`toggle()`/`help()` API,
-`:ColemakDHToggle` and `:ColemakDHHelp` commands), wired in via a one-line
-`require("colemak-dh").setup()` at the end of `~/.config/nvim/lua/config/keymaps.lua`.
-
-**Integration gotcha**: don't fake a lazy.nvim plugin spec via
-`{ dir = vim.fn.stdpath("config"), name = "...", lazy = false, config = ... }` —
-lazy silently fails to register it (plugin never appears in `require("lazy.core.config").plugins`,
-no error). Just `require()` the module directly from `config/keymaps.lua` (or
-`config/autocmds.lua`) — always loaded, no lazy plugin-discovery pitfalls.
-
-**Headless-testing gotcha**: `VeryLazy` fires on `UIEnter`, which never happens
-under `nvim --headless` (no UI attaches). Don't test remap loading by deferring
-and checking `maparg()` after startup — it'll look broken but isn't. Instead
-directly `require("colemak-dh").setup()` in the headless test to validate the
-module logic; trust that interactive nvim fires `VeryLazy` normally.
+Also see: `nvim/lua/colemak-dh/init.lua` remaps hjkl-style nav for when Colemak-DH is the active system layout — irrelevant while Colemak-DH is disabled, no need to touch it for a layout toggle.
