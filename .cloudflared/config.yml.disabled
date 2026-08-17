@@ -1,0 +1,15 @@
+tunnel: orgbot
+credentials-file: /home/wils/.cloudflared/orgbot.json
+
+ingress:
+  # Webhook receiver — GitHub org webhook posts here. receiver only exposes
+  # POST /webhook/github and GET /healthz (orgbot/docker-compose.yml:34-54).
+  - hostname: zep-dev-ai-api.gir0fa.com
+    service: http://localhost:8080
+
+  # Dashboard — human-facing UI + GitHub OAuth login (orgbot/docker-compose.yml:130-145).
+  - hostname: zep-dev-ai.gir0fa.com
+    service: http://localhost:8082
+
+  # Catch-all required by cloudflared; anything not matched above 404s.
+  - service: http_status:404

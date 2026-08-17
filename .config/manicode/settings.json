@@ -1,0 +1,6 @@
+{
+  "mode": "DEFAULT",
+  "adsEnabled": true,
+  "freebuffModel": "deepseek/deepseek-v4-flash",
+  "hasSubmittedFirstPrompt": true
+}

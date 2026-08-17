@@ -1,0 +1,92 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/devin-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/devin-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/devin-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/devin-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/devin-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/devin-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostCompaction": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/devin-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/devin-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/devin-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/devin-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/devin-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/devin-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/devin-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/devin-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/devin-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/devin-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/devin-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
