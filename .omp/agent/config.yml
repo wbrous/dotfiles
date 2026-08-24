@@ -4,7 +4,7 @@ symbolPreset: nerd
 theme: 
   dark: dark-nord
   light: light
-setupVersion: 1
+setupVersion: 2
 modelRoles: 
   plan: anthropic/claude-sonnet-5:high
   tiny: opencode-go/deepseek-v4-flash:xhigh
@@ -30,3 +30,5 @@ memory:
   backend: "off"
 github: 
   enabled: true
+composer: 
+  shape: pi
