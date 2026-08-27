@@ -3,6 +3,9 @@ case "$ORCA_ANTIGRAVITY_EVENT" in
   Stop)
     printf '{"decision":""}\n'
     ;;
+  PreToolUse)
+    printf '{"decision":"ask"}\n'
+    ;;
   *)
     printf "{}\n"
     ;;

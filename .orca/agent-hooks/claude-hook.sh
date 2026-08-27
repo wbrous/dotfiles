@@ -1,9 +1,13 @@
 #!/bin/sh
+printf "{}\n"
 payload=$({ command -p cat 2>/dev/null || cat; })
 if [ -z "$payload" ]; then
   exit 0
 fi
 if [ -n "$DEVIN_PROJECT_DIR" ]; then
+  exit 0
+fi
+if [ -n "$CLAUDE_JOB_DIR" ]; then
   exit 0
 fi
 if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then

@@ -8,6 +8,9 @@ payload=${payload%?}
 if [ -z "$payload" ]; then
   exit 0
 fi
+if [ -n "$CLAUDE_JOB_DIR" ]; then
+  exit 0
+fi
 case "$payload" in
   *'"rate_limits"'*) ;;
   *) exit 0 ;;
