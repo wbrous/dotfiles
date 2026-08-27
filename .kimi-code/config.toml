@@ -1,0 +1,30 @@
+# >>> orca-managed-kimi-hooks (managed by Orca; do not edit) >>>
+[[hooks]]
+event = "UserPromptSubmit"
+command = "if [ -f '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/kimi-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/kimi-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi"
+timeout = 10
+[[hooks]]
+event = "PreToolUse"
+command = "if [ -f '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/kimi-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/kimi-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi"
+timeout = 10
+[[hooks]]
+event = "PostToolUse"
+command = "if [ -f '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/kimi-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/kimi-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi"
+timeout = 10
+[[hooks]]
+event = "PostToolUseFailure"
+command = "if [ -f '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/kimi-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/kimi-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi"
+timeout = 10
+[[hooks]]
+event = "PermissionRequest"
+command = "if [ -f '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/kimi-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/kimi-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi"
+timeout = 10
+[[hooks]]
+event = "Stop"
+command = "if [ -f '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/kimi-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/kimi-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi"
+timeout = 10
+[[hooks]]
+event = "StopFailure"
+command = "if [ -f '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -r '/home/wils/.orca/agent-hooks/kimi-hook.sh' ] && [ -x '/home/wils/.orca/agent-hooks/kimi-hook.sh' ]; then /bin/sh '/home/wils/.orca/agent-hooks/kimi-hook.sh'; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi"
+timeout = 10
+# <<< orca-managed-kimi-hooks <<<
