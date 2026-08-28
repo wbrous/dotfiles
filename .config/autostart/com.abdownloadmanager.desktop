@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=AB Download Manager
+Exec="/usr/bin/ABDownloadManager" --background
+Terminal=false
+NoDisplay=true
