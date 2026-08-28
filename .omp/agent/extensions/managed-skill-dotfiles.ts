@@ -1,29 +1,28 @@
-// managed-skill-dotfiles: auto-backup newly created/updated managed skills
-// (~/.omp/agent/managed-skills/<name>/SKILL.md) into the dotfiles bare repo
-// (~/.dotfiles) the moment the agent's `manage_skill` tool lands a successful
-// create/update.
+// managed-skill-dotfiles: auto-backup every successful `manage_skill` outcome
+// (create/update/delete) for managed skills (~/.omp/agent/managed-skills/<name>/)
+// into the dotfiles bare repo (~/.dotfiles) the moment the tool lands.
 //
-// Motivation: when omp creates a managed skill via `manage_skill`, it writes
-// the skill to disk but does not touch the dotfiles repo, so the new skill is
-// left unbacked-up until a manual fan-out scout survey. This extension removes
-// that step: create/update is auto-committed with the repo's existing commit
-// convention. Deletes are deliberately left alone (removing the dotfiles copy
-// on a skill delete is a destructive action that should stay an explicit,
-// human-supervised decision).
+// Motivation: when omp creates, updates, or deletes a managed skill via
+// `manage_skill`, it writes to disk but does not touch the dotfiles repo, so
+// the change is left unsynced until a manual fan-out scout survey. This
+// extension closes that gap: every mutation is committed with the repo's
+// existing `Add managed-skill: <name>` convention (create/update), and deletes
+// are committed too (`git rm`) so the backup copy tracks the on-disk truth.
 //
 // Mechanism: hook the `tool_result` event (fires after every tool executes with
-// { toolName, input, isError }). On a successful `manage_skill` create/update,
-// `git add` the skill dir and commit it via pi.exec against the bare repo.
+// { toolName, input, isError }). On a successful `manage_skill` create/update/
+// delete, run the bare-repo git mutation via pi.exec.
 //
 // Guardrails:
-//   - Never `add -A`; only the single <name>/SKILL.md path.
+//   - Never `add -A`/`git rm -r`; only the single <name>/SKILL.md path.
 //   - Skip commits when the file is byte-identical to HEAD (no no-op commit
-//     noise in the "what's actually new" signal).
+//     noise in the "what's actually new" signal); skip deletes of skills that
+//     were never tracked (nothing to remove).
 //   - Never bypass the global gitleaks pre-commit hook (GIT_ALLOW_SECRETS=1 is
 //     a deliberate human escape hatch). If the commit is blocked, surface the
 //     hook's stderr via sendMessage so the agent/user can decide.
-//   - De-duplicate in-flight ops per skill name so two rapid create/updates of
-//     the same skill can't race the bare-repo commit.
+//   - De-duplicate in-flight ops per skill name so two rapid mutations of the
+//     same skill can't race the bare-repo commit.
 //   - Never calls `manage_skill`, so it can never re-trigger itself.
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -46,6 +45,11 @@ function skillExistsOnDisk(name: string): boolean {
 	}
 }
 
+/** Single-quote a shell token so the sh wrapper cannot be tricked into running anything but git. */
+function shq(s: string): string {
+	return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
 interface BareGit {
 	args: string[];
 	stdout: string;
@@ -61,23 +65,17 @@ interface BareGit {
  * env vars, because pi.exec's ExecOptions does not forward `env` — the git
  * command must point at the bare repo itself, not inherit the caller's env.
  *
- * Marks the git subprocess as agent-driven so the shared `prepare-commit-msg`
- * hook (see the git-scoped-coauthor-trailer skill) appends the
- * `Co-authored-by: wbrous-dev-ai` trailer to the commit. The hook gates on
- * `OMPCODE=1`, which `pi.exec` does not inherit (the harness only injects
- * `OMPCODE` into the per-tool bash env, not the omp process env the extension
- * runs in), so we set it on this process before spawning — Bun child
- * processes inherit `process.env` by default when no `env` option is passed.
- * Setting it here (rather than only at commit time) keeps every git call
- * uniformly marked as agent-driven.
+ * Runs the command through a shell with `OMPCODE=1` prefixed on the argv (the
+ * way the harness itself seeds agent subprocesses) so the shared
+ * `prepare-commit-msg` hook (git-scoped-coauthor-trailer skill) appends the
+ * `Co-authored-by: wbrous-dev-ai` trailer to the commit. Every arg is
+ * single-quoted so the deliberately-shallow shell wrapper cannot be tricked by
+ * the skill name or paths into running anything other than git itself.
  */
 async function bareGit(pi: ExtensionAPI, ...args: string[]): Promise<BareGit> {
-	process.env.OMPCODE = "1";
-	const result = await pi.exec(
-		"git",
-		[`--git-dir=${DOTFILES_DIR}`, `--work-tree=${homedir()}`, ...args],
-		{ cwd: homedir() },
-	);
+	const argv = ["git", `--git-dir=${DOTFILES_DIR}`, `--work-tree=${homedir()}`, ...args];
+	const cmd = `OMPCODE=1 ${argv.map(shq).join(" ")}`;
+	const result = await pi.exec("/bin/sh", ["-c", cmd], { cwd: homedir() });
 	return { args, stdout: result.stdout, stderr: result.stderr, code: result.code };
 }
 
@@ -88,23 +86,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 	async function syncSkillToDotfiles(input: Record<string, unknown>): Promise<void> {
 		const action = input.action;
 		const name = input.name;
-		if (typeof name !== "string" || !name || (action !== "create" && action !== "update")) {
-			return;
-		}
-		if (!skillExistsOnDisk(name)) {
-			// Create succeeded per the tool result but the file isn't where we
-			// expect — refuse to guess a path and add something wrong. Report it.
-			pi.sendMessage(
-				{
-					customType: "managed-skill-dotfiles",
-					content:
-						`manage_skill reported a successful "${action}" for "${name}", but no ` +
-						`SKILL.md was found at ${MANAGED_SKILLS_DIR}/${name}. The skill was not auto-added to dotfiles.`,
-					display: true,
-					attribution: "user",
-				},
-				{ triggerTurn: true },
-			);
+		if (typeof name !== "string" || !name || (action !== "create" && action !== "update" && action !== "delete")) {
 			return;
 		}
 
@@ -115,6 +97,99 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 		try {
 			const repoRelPath = `.omp/agent/managed-skills/${name}/SKILL.md`;
 
+			// The path the managed skill is expected to live at (or have lived
+			// at, for a delete). Refuse to guess a path and add something wrong.
+			const diskPath = join(MANAGED_SKILLS_DIR, name, "SKILL.md");
+			const onDisk = skillExistsOnDisk(name);
+
+			if (action === "delete") {
+				if (onDisk) {
+					// manage_skill said the skill was deleted but the file is still
+					// here — that is unexpected. Leave the dotfiles copy alone.
+					pi.sendMessage(
+						{
+							customType: "managed-skill-dotfiles",
+							content:
+								`manage_skill reported deleting "${name}", but ${diskPath} still exists. ` +
+								"The dotfiles copy was left untouched.",
+							display: true,
+							attribution: "user",
+						},
+						{ triggerTurn: true },
+					);
+					return;
+				}
+
+				// Stage the removal; the commit drops it from dotfiles. If the
+				// skill was never tracked (e.g. its earlier commit failed), there
+				// is nothing to remove — a clean no-op, not an error.
+				const rm = await bareGit(pi, "rm", "--", repoRelPath);
+				if (rm.code !== 0) {
+					const isUntracked =
+						/did not match any file|fatal: pathspec|untracked/i.test(rm.stderr);
+					if (isUntracked) return; // never tracked → nothing to commit
+					pi.sendMessage(
+						{
+							customType: "managed-skill-dotfiles",
+							content: `Could not stage removal of managed skill "${name}":\n${rm.stderr.trim()}`,
+							display: true,
+							attribution: "user",
+						},
+						{ triggerTurn: true },
+					);
+					return;
+				}
+
+				// Commit the removal into dotfiles.
+				const commit = await bareGit(pi, "commit", "-m", `Remove managed-skill: ${name}`, "--", repoRelPath);
+				if (commit.code !== 0) {
+					const detail = (commit.stderr || commit.stdout).trim();
+					pi.sendMessage(
+						{
+							customType: "managed-skill-dotfiles",
+							content:
+								`managed skill "${name}" was deleted but its dotfiles removal commit was rejected:\n` +
+								(detail ? detail : `git commit exited ${commit.code} with no output.`) +
+								`\nThe file ${repoRelPath} is staged for removal but NOT committed.`,
+							display: true,
+							attribution: "user",
+						},
+						{ triggerTurn: true },
+					);
+					return;
+				}
+
+				pi.sendMessage(
+					{
+						customType: "managed-skill-dotfiles",
+						content:
+							`Removed managed skill "${name}" from dotfiles (${commit.stdout.trim().split("\n")[0] ?? `commit ${commit.code}`}).`,
+						display: true,
+						attribution: "user",
+					},
+					{ triggerTurn: true },
+				);
+				return;
+			}
+
+			// --- create / update ---
+			if (!onDisk) {
+				// Create/update succeeded per the tool result but the file isn't
+				// where we expect — refuse to guess a path and add something wrong.
+				pi.sendMessage(
+					{
+						customType: "managed-skill-dotfiles",
+						content:
+							`manage_skill reported a successful "${action}" for "${name}", but no ` +
+							`SKILL.md was found at ${diskPath}. The skill was not auto-added to dotfiles.`,
+						display: true,
+						attribution: "user",
+					},
+					{ triggerTurn: true },
+				);
+				return;
+			}
+
 			// Stage just this skill (never add -A). add of an already-clean path
 			// is a no-op; the staged-diff guard below still returns early.
 			const add = await bareGit(pi, "add", "--", repoRelPath);
@@ -122,9 +197,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 				pi.sendMessage(
 					{
 						customType: "managed-skill-dotfiles",
-						content:
-							`Could not stage managed skill "${name}" into dotfiles:\n` +
-							`git add -- ${repoRelPath}\n${add.stderr.trim()}`,
+						content: `Could not stage managed skill "${name}" into dotfiles:\n${add.stderr.trim()}`,
 						display: true,
 						attribution: "user",
 					},
@@ -159,9 +232,9 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 					{
 						customType: "managed-skill-dotfiles",
 						content:
-							`managed skill "${name}" was created but its dotfiles commit was rejected:\n` +
+							`managed skill "${name}" was written but its dotfiles commit was rejected:\n` +
 							(detail ? detail : `git commit exited ${commit.code} with no output.`) +
-							`\nThe skill is saved locally at ${MANAGED_SKILLS_DIR}/${name}/SKILL.md but NOT backed up. ` +
+							`\nThe skill is saved locally at ${diskPath} but NOT backed up. ` +
 							"If this is a gitleaks false positive you can commit it manually with " +
 							"`GIT_ALLOW_SECRETS=1`.",
 						display: true,
@@ -189,7 +262,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 
 	pi.on("tool_result", (event) => {
 		if (event.toolName !== "manage_skill") return;
-		if (event.isError) return; // failed create/update — nothing to back up
+		if (event.isError) return; // failed mutation — nothing to back up
 		void syncSkillToDotfiles(event.input);
 	});
 }
