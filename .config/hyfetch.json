@@ -1,0 +1,23 @@
+{
+    "preset": "bisexual",
+    "mode": "rgb",
+    "auto_detect_light_dark": true,
+    "light_dark": "dark",
+    "lightness": 0.65,
+    "color_align": {
+        "mode": "custom",
+        "custom_colors": {
+            "2": 2,
+            "1": 1,
+            "3": 0
+        }
+    },
+    "backend": "fastfetch",
+    "args": null,
+    "distro": null,
+    "pride_month_disable": false,
+    "custom_ascii_path": null,
+    "custom_presets": null,
+    "palette_glyph": null,
+    "palette_type": null
+}

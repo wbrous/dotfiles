@@ -1,0 +1,16 @@
+#!/bin/sh
+# Global pre-commit hook: gitleaks-scan staged changes in every repo.
+# Bypass (rare, deliberate): GIT_ALLOW_SECRETS=1 git commit ...
+
+if [ "${GIT_ALLOW_SECRETS:-}" = "1" ]; then
+  echo "GIT_ALLOW_SECRETS=1 set — skipping gitleaks scan."
+  exit 0
+fi
+
+git diff --staged | gitleaks stdin --redact -v
+if [ $? -ne 0 ]; then
+  echo "gitleaks found secret. commit blocked. (bypass: GIT_ALLOW_SECRETS=1 git commit ...)"
+  exit 1
+fi
+
+exit 0

@@ -1,0 +1,45 @@
+#!/bin/sh
+# Runs on EVERY repo (global core.hooksPath, no includeIf scoping for this part).
+#
+#   1. AI co-author trailer — only for scoped project folders (config set via
+#      includeIf'd zep/phermata configs) AND only when the commit came from
+#      oh-my-pi (OMPCODE=1). No-ops outside those scopes.
+#   2. Signed-off-by — every repo, every commit, omp or manual. Auto-added
+#      whenever this commit will actually be GPG-signed (commit.gpgsign=true
+#      and the configured signing key's secret half is present locally).
+#      No sudo gate: the real per-commit authentication now happens at GPG
+#      signing time via gpg-agent + a fingerprint-gated pinentry, not here.
+MSG_FILE="$1"
+COMMIT_SOURCE="$2"
+
+case "$COMMIT_SOURCE" in
+  merge) exit 0 ;;
+esac
+
+# Append TRAILER on its own line. A single blank line separates the message
+# body from the trailer block, but trailers stack directly on top of each
+# other with no blank line in between (matches git trailer convention).
+append_trailer() {
+  trailer="$1"
+  grep -qF "$trailer" "$MSG_FILE" && return
+  if [ -s "$MSG_FILE" ] && [ "$TRAILER_BLOCK_STARTED" != "1" ]; then
+    printf '\n' >> "$MSG_FILE"
+  fi
+  printf '%s\n' "$trailer" >> "$MSG_FILE"
+  TRAILER_BLOCK_STARTED=1
+}
+
+# --- 1. AI co-author trailer (omp-only, per-scope text via git config) ---
+COAUTHOR_TRAILER="$(git config --get coauthor-hook.trailer)"
+if [ -n "$COAUTHOR_TRAILER" ] && [ "$OMPCODE" = "1" ]; then
+  append_trailer "$COAUTHOR_TRAILER"
+fi
+
+# --- 2. Signed-off-by, gated on an actually-usable GPG signing key (every repo) ---
+GPG_SIGN_ENABLED="$(git config --get commit.gpgsign)"
+SIGNKEY="$(git config --get user.signingkey)"
+if [ "$GPG_SIGN_ENABLED" = "true" ] && [ -n "$SIGNKEY" ] \
+   && gpg --list-secret-keys --with-colons "$SIGNKEY" 2>/dev/null | grep -q '^sec'; then
+  SIGNOFF_TRAILER="Signed-off-by: Gir0fa <wils@gir0fa.com>"
+  append_trailer "$SIGNOFF_TRAILER"
+fi
