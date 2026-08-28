@@ -8,7 +8,13 @@
 // on a timer. The xkb variant this pairs with (see ~/.config/hypr/input.lua)
 // reports itself as "English (US, Gallium)" — see us(gallium) in
 // /usr/share/X11/xkb/symbols/us.
-
+//
+// The surface itself is a stationary, full-screen, click-through-except-
+// over-the-card layer (same pattern as the notifications/OSD/menu overlays
+// in this shell — see `mask: Region { item: card }`). Only `card` moves,
+// via plain Item x/y, using MouseArea's built-in `drag.target` — Qt's own
+// well-tested pointer-tracking, not hand-rolled delta math, which kept
+// drifting/overshooting under fast mouse movement.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -78,22 +84,26 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
-    anchors { left: true; top: true }
-    margins.left: pos.x
-    margins.top: pos.y
-    implicitWidth: card.width
-    implicitHeight: card.height
+
+    // Full-screen, fixed surface — the surface itself never moves, only
+    // `card` does (via x/y), so nothing round-trips through the compositor
+    // mid-drag.
+    anchors { top: true; bottom: true; left: true; right: true }
+
+    // Click-through everywhere except over the card.
+    mask: Region { item: card }
 
     readonly property real screenW: panel.screen ? panel.screen.width : 0
     readonly property real screenH: panel.screen ? panel.screen.height : 0
 
-    function clamp() {
-      if (screenW <= 0 || screenH <= 0) return
-      pos.x = Math.min(Math.max(pos.x, 0), Math.max(0, screenW - card.width))
-      pos.y = Math.min(Math.max(pos.y, 0), Math.max(0, screenH - card.height))
-    }
+    function clampedX(x) { return Math.min(Math.max(x, 0), Math.max(0, screenW - card.width)) }
+    function clampedY(y) { return Math.min(Math.max(y, 0), Math.max(0, screenH - card.height)) }
 
-    onVisibleChanged: if (visible) clamp()
+    onVisibleChanged: {
+      if (!visible) return
+      card.x = clampedX(pos.x)
+      card.y = clampedY(pos.y)
+    }
 
     BorderSurface {
       id: card
@@ -107,17 +117,15 @@ Item {
         id: dragArea
         anchors.fill: parent
         cursorShape: Qt.SizeAllCursor
-        property real pressX: 0
-        property real pressY: 0
-        onPressed: function(mouse) {
-          pressX = mouse.x
-          pressY = mouse.y
-        }
-        onPositionChanged: function(mouse) {
-          if (!pressed) return
-          pos.x += mouse.x - pressX
-          pos.y += mouse.y - pressY
-          panel.clamp()
+        drag.target: card
+        drag.axis: Drag.XAndYAxis
+        drag.minimumX: 0
+        drag.maximumX: Math.max(0, panel.screenW - card.width)
+        drag.minimumY: 0
+        drag.maximumY: Math.max(0, panel.screenH - card.height)
+        onReleased: {
+          pos.x = card.x
+          pos.y = card.y
         }
       }
 

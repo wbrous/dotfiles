@@ -4,7 +4,7 @@
 -- keyboard layout is Gallium.
 --
 -- Gallium relocates the letters typed by the physical h/j/k/l keys:
---   physical h-key -> types "p"
+--   physical h-key -> types "y"
 --   physical j-key -> types "h"
 --   physical k-key -> types "a"
 --   physical l-key -> types "e"
@@ -20,7 +20,7 @@
 local M = {}
 
 M.default_pairs = {
-  { "h", "p" },
+  { "h", "y" },
   { "j", "h" },
   { "k", "a" },
   { "l", "e" },
@@ -102,7 +102,7 @@ local descriptions = {
   j = "cursor down",
   k = "cursor up",
   l = "cursor right",
-  p = "paste",
+  y = "yank",
   a = "insert after cursor",
   e = "end of word",
 }
