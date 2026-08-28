@@ -1,52 +1,52 @@
 ---
 name: managed-skill-dotfiles-autosync-extension
-description: "Use when maintaining/debugging the omp extension that auto-commits every successful manage_skill outcome (create/update/delete) for managed skills (~/.omp/agent/managed-skills) into the dotfiles bare repo (~/.dotfiles), when a managed skill wasn't auto-backed-up after manage_skill, or when writing any omp extension that runs git against the dotfiles repo — covers the tool_result event hook, the pi.exec env-not-forwarded gotcha (must use git --git-dir/--work-tree leading flags), the OMPCODE=1 co-author gotcha (must shell-prefix OMPCODE=1 git … via /bin/sh -c; process.env mutation does NOT work), delete sync via git rm, the no-op commit skip, and gitleaks-respecting behavior."
+description: "Use when maintaining/debugging the omp extension that auto-commits managed skills (create/update/delete) into the dotfiles bare repo, or when writing any omp extension that runs git against dotfiles — covers the tool_result hook, pi.exec env-not-forwarded gotcha, the OMPCODE=1 shell-prefix requirement (process.env fails), no-op skip, gitleaks behavior, and the /dotfiles-scan scout-survey command."
 ---
 
 # managed-skill-dotfiles autosync extension
 
-The omp extension at `~/.omp/agent/extensions/managed-skill-dotfiles.ts` (tracked in the dotfiles bare repo) auto-commits **every successful `manage_skill` outcome** — create, update, AND delete — into the dotfiles bare repo (`~/.dotfiles`) the moment the tool lands, so managed skills stay backed up without a manual fan-out scout survey.
+The omp extension at `~/.omp/agent/extensions/managed-skill-dotfiles.ts` auto-commits EVERY successful `manage_skill` outcome — **create, update, AND delete** — into the dotfiles bare repo (`~/.dotfiles`) the moment it lands, so managed skills stay backed up without a manual fan-out scout survey. Create/update commit `Add managed-skill: <name>` / `Update managed-skill: <name>`; delete runs `git rm` and commits `Remove managed-skill: <name>`.
 
-## Architecture
+## Mechanism
 
-- Hooks the extension `tool_result` event (fires after every tool executes with `{ toolName, input, isError }`), filters `toolName === "manage_skill"` and `!isError`, then runs the git mutation async (never awaited, reported back via `pi.sendMessage({ triggerTurn: true })`).
-- Commit messages follow the repo convention: `Add managed-skill: <name>`, `Update managed-skill: <name>`, `Remove managed-skill: <name>`.
-- Per-name `inFlight` Set dedupes rapid consecutive mutations of the same skill so they can't race the bare-repo commit.
+Hooks the `tool_result` event: fires after every tool executes with `{ toolName, input, isError }`. Filters `toolName === "manage_skill"`, skips `isError`, reads `input.action` + `input.name`, and runs the bare-repo git mutation via `pi.exec`. A per-name `inFlight` set dedupes rapid same-skill mutations.
 
-## Action handling
+## Gotcha 1: pi.exec does NOT forward `env` — use git leading flags, not GIT_DIR/GIT_WORK_TREE env vars
 
-- **create** → `git add -- <path>` then commit `Add managed-skill: <name>`.
-- **update** → same as create but `Update managed-skill: <name>`; skips the commit entirely when `git diff --cached --quiet` returns 0 (byte-identical to HEAD, no no-op commit noise).
-- **delete** → `git rm -- <path>` then commit `Remove managed-skill: <name>`, dropping the file from dotfiles HEAD. If `manage_skill` reported a successful delete but the SKILL.md still exists on disk, the dotfiles copy is left untouched and the anomaly is reported. If the skill was never tracked in dotfiles (e.g. its earlier commit failed), `git rm`'s pathspec error is treated as a clean no-op.
-- Never `add -A` / `git rm -r` — only the single `.omp/agent/managed-skills/<name>/SKILL.md` path.
+`pi.exec`'s `ExecOptions` has only `cwd`/`signal`/`timeout` — an `env` option is silently dropped (the type doesn't even have it). So to target the bare repo, pass `--git-dir`/`--work-tree` as leading global options (the exact expansion of the `dotfiles` alias):
 
-## Gotcha 1: pi.exec does NOT forward env
+```ts
+pi.exec("git", [`--git-dir=${DOTFILES_DIR}`, `--work-tree=${homedir()}`, ...args], { cwd: homedir() });
+```
 
-`pi.exec`'s `ExecOptions` only has `signal`/`timeout`/`cwd` — no `env`. Setting `GIT_DIR`/`GIT_WORK_TREE` via an env option is silently dropped and git runs against the wrong repo. The fix: use leading global flags instead, exactly the expansion of the `dotfiles` shell alias:
+## Gotcha 2 (verified the hard way): OMPCODE=1 must be a shell PREFIX, not process.env
+
+The shared `prepare-commit-msg` hook (see `git-scoped-coauthor-trailer` skill) appends `Co-authored-by: wbrous-dev-ai` ONLY when `OMPCODE=1` is in the git subprocess env. The harness injects `OMPCODE=1` only into the per-tool bash env, NOT into the omp process env extensions run in — so extension-spawned git commits silently miss the co-author.
+
+- **FAILED approach**: `process.env.OMPCODE = "1"` before `pi.exec` — empirically did NOT propagate (live extension commit `52ad597` lacked the co-author).
+- **WORKING approach**: run the git command through a shell with the env assignment on the argv:
 
 ```ts
 const argv = ["git", `--git-dir=${DOTFILES_DIR}`, `--work-tree=${homedir()}`, ...args];
-```
-
-## Gotcha 2: OMPCODE=1 — process.env mutation does NOT work, shell-prefix does
-
-The shared `prepare-commit-msg` hook (see `git-scoped-coauthor-trailer` skill) appends `Co-authored-by: wbrous-dev-ai <ai-bot@gir0fa.com>` **only when `OMPCODE=1`** is in the git subprocess env, distinguishing agent commits from manual ones. The harness injects `OMPCODE=1` only into per-tool bash subprocesses, not the omp process env the extension runs in.
-
-Setting `process.env.OMPCODE = "1"` before `pi.exec` **was live-verified to fail** (extension commit `52ad597` had Signed-off-by but no Co-authored-by). The working approach: run the git command through a shell with `OMPCODE=1` prefixed on the argv, with every git arg single-quoted (`shq`) so the deliberately-shallow wrapper can only ever run git:
-
-```ts
-function shq(s: string): string { return `'${s.replace(/'/g, `'\\''`)}'`; }
-
 const cmd = `OMPCODE=1 ${argv.map(shq).join(" ")}`;
 const result = await pi.exec("/bin/sh", ["-c", cmd], { cwd: homedir() });
 ```
 
-Live-verified: extension-made commits `eae8f1c` (Add) and `7394186` (Remove) both carry `Co-authored-by: wbrous-dev-ai`.
+with `shq(s) = "'" + s.replace(/'/g, `'\\''`) + "'"` so skill names/paths can't escape the shell. Verified: extension commits `eae8f1c` (create) and `7394186` (delete) both carried `Co-authored-by: wbrous-dev-ai`.
 
-## Gotcha 3: gitleaks
+## Other guardrails
 
-The global gitleaks pre-commit hook fires on every dotfiles commit. Never bypass with `GIT_ALLOW_SECRETS=1` — that is a deliberate human escape hatch. If the commit fails (hook rejection), surface the hook's stderr via `sendMessage` and let the agent/user decide.
+- Never `add -A` / `git rm -r`; only the single `.omp/agent/managed-skills/<name>/SKILL.md` path.
+- No-op skip: `git diff --cached --quiet -- <path>` returns 0 → byte-identical to HEAD → skip commit (keeps the "what's new" signal clean).
+- Delete of a never-tracked skill is a clean no-op (git rm "did not match" → return silently).
+- Delete reported but file still on disk → leave dotfiles untouched and report the anomaly.
+- Never bypass gitleaks (`GIT_ALLOW_SECRETS=1` stays a human escape hatch); a blocked commit surfaces the hook stderr via `sendMessage({ triggerTurn: true })`.
+- Never calls `manage_skill`, so it can never re-trigger itself.
 
-## Verification
+## Companion: /dotfiles-scan extension
 
-End-to-end test in a live session: `manage_skill create` a throwaway skill → expect an `Add managed-skill:` auto-commit with the wbrous-dev-ai co-author; `manage_skill delete` it → expect a `Remove managed-skill:` auto-commit, file gone from both disk and dotfiles HEAD. Check with `git --git-dir=~/.dotfiles --work-tree=~ log --oneline -2` and `git show -s --format=%B HEAD`. Note: extension edits only take effect on the NEXT session reload (extensions load at session start).
+`~/.omp/agent/extensions/dotfiles-scan.ts` registers the `/dotfiles-scan` slash command. It does NOT survey itself — it injects a precise prompt (via `sendMessage` + `triggerTurn`) telling the agent to: snapshot `git --git-dir='$HOME/.dotfiles' --work-tree='$HOME' ls-tree -r --name-only HEAD`, diff against on-disk candidates per cluster, fan out READ-ONLY scout subagents via one parallel `task` batch (verdicts `DEF ADD` / `MAYBE` / `SHOULDN'T ADD`), auto-commit DEF ADDs one path at a time (filtered against already-tracked), and report `DEF ADD COMMITTED:` / `MAYBE:` / `NO:` lists. Args: `skills` / `config` / `home` scopes (autocompleted) or free-form focus.
+
+## Verification recipe
+
+Create a throwaway skill, confirm `Add managed-skill:` commit with the co-author; delete it, confirm `Remove managed-skill:` commit with the co-author and the file gone from `ls-tree`; check the commit trailers with `git show -s --format=%B`.
