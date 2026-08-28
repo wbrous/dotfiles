@@ -1,0 +1,93 @@
+#!/bin/sh
+# pre-push: before any push, GPG-resign any UNPUSHED commits that are not yet
+# signed, then abort the push and ask the user to run `git push` again.
+#
+# Rationale: during development, managed-skill auto-commits (and the dotfiles
+# survey) deliberately commit UNSIGNED so no fingerprint prompt fires while the
+# user may not be at the machine (commit.gpgsign=false is set locally on the
+# dotfiles bare repo for exactly that reason). But when the user explicitly
+# pushes, they ARE present — so unpushed unsigned commits get signed here,
+# right before they would leave the machine. Already-pushed commits are NEVER
+# rewritten (that would rewrite published history).
+#
+# "Unpushed" = commits in the range (remote ref oid)..HEAD. All-zeros remote
+# oid = brand-new branch -> ALL local commits are unpushed (resign from --root).
+#
+# Signing is one `git rebase --exec 'git commit --amend --no-edit -S'` over the
+# unpushed range, replaying each uncovered commit and amending it with a fresh
+# GPG signature (preserves linear/merge topology via --rebase-merges).
+#
+# After resigning we EXIT 1 to abort the in-flight push (rewriting mid-transport
+# is unsafe — the refs git is about to send are already resolved). The user re-
+# runs `git push`; the second run finds nothing left to sign and proceeds.
+#
+# Scope: only the pushed branch (the common case — dotfiles pushes main). If a
+# single push targets multiple branches, only the first with unsigned commits is
+# resigned this run; the re-push recomputes ranges fresh and fixes the rest.
+#
+# NOTE: gpg-agent here is configured with default-cache-ttl 0 (fingerprint
+# pinentry per op), so resigning N commits prompts N times. Typically 1-3 for
+# dotfiles; a batch of many new commits taps per commit.
+set -u
+
+[ "${GIT_PRE_PUSH_RESIGNED:-}" = "1" ] && exit 0
+
+# pre-push stdin: "<local-ref> <local-oid> <remote-ref> <remote-oid>" per line
+RESIGNED=0
+MSG=""
+while IFS=' ' read -r local_ref local_oid remote_ref remote_oid; do
+  [ -z "$local_ref" ] && continue
+  # Skipping a deletion (nothing to push).
+  [ "$local_oid" = "0000000000000000000000000000000000000000" ] && continue
+
+  # Base for the unpushed range.
+  if [ "$remote_oid" = "0000000000000000000000000000000000000000" ]; then
+    # Brand-new branch: sign the entire local history from the root.
+    base_arg="--root"
+    # Verify there is actually a root to rebase.
+    root="$(git rev-list --max-parents=0 "$local_oid" 2>/dev/null | head -n1)"
+    [ -z "$root" ] && continue
+    # All local commits are unpushed; they are unsigned unless already signed.
+    range="$local_oid"
+  else
+    base_arg="$remote_oid"
+    # Stop early if remote already contains everything local (up to date).
+    range="$(git rev-list "$remote_oid".."$local_oid" 2>/dev/null || true)"
+    [ -z "$range" ] && continue
+  fi
+
+  # Keep only UNSIGNED unpushed commits. Prefer checking the commit object
+  # for a `gpgsig` header over `git log %G?`: %G? returns E (can't verify —
+  # missing/unknown key) for a signed commit when that key isn't present,
+  # which would wrongly skip it. A commit is unsigned iff its object has no
+  # `gpgsig` header at all.
+  unsigned="$(printf '%s\n' "$range" | while read -r sha; do
+    [ -z "$sha" ] && continue
+    git cat-file -p "$sha" 2>/dev/null | grep -q '^gpgsig' || echo "$sha"
+  done)"
+  [ -z "$unsigned" ] && continue
+
+  MSG="${MSG}${MSG:+ }${local_ref}->${remote_ref}"
+  RESIGNED=$((RESIGNED + 1))
+
+  # Sign every unpushed unsigned commit via one rebase-and-amend pass.
+  # shellcheck disable=SC2086
+  if ! git rebase $base_arg --rebase-merges --exec 'git commit --amend --no-edit -S' --autostash 2>&1; then
+    echo "pre-push: ERROR — resign rebase failed. Resolve conflicts, then re-run git push." >&2
+    exit 1
+  fi
+
+  # One resign pass per push, then abort so the re-push uses the new refs.
+  # Do not process further stdin lines this run; the re-push recomputes fresh.
+  break
+done
+
+if [ "$RESIGNED" -gt 0 ]; then
+  echo
+  echo "pre-push: re-signed ${RESIGNED} unpushed unsigned commit(s) on ${MSG}."
+  echo "pre-push: fingerprint was required per commit (gpg cache-ttl=0)."
+  echo "pre-push: THIS push was ABORTED so the rewritten refs take effect."
+  echo "pre-push: re-run the push command to push the now-signed commits."
+  exit 1
+fi
+exit 0
