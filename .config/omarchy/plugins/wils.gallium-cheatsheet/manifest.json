@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "wils.gallium-cheatsheet",
+  "name": "Gallium Cheat Sheet",
+  "version": "1.0.0",
+  "author": "wils",
+  "description": "Shows a draggable Gallium keymap overlay while the Gallium keyboard layout is active.",
+  "kinds": [
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Gallium.qml"
+  }
+}

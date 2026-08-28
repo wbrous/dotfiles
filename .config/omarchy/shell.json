@@ -19,7 +19,7 @@
       ],
       "center": [
         {
-          "id": "omarchy.indicators"
+          "id": "wils.indicators"
         },
         {
           "id": "omarchy.clock",
@@ -66,6 +66,9 @@
   "plugins": [
     {
       "id": "wils.notifications"
+    },
+    {
+      "id": "wils.gallium-cheatsheet"
     }
   ],
   "disabledPlugins": [
