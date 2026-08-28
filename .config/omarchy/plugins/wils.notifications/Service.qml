@@ -1096,6 +1096,16 @@ Item {
       return "ok"
     }
 
+    // Right-click-a-toast equivalent, exposed for a keybind. Snoozes new
+    // arrivals for snoozeIdleMs (see snoozeAndClear() at root scope) and
+    // clears the visible toasts — entirely independent of Do Not Disturb,
+    // which is a separate persisted flag checked earlier in
+    // handleNotification(). This never reads or writes doNotDisturb.
+    function snoozeAndClear(): string {
+      service.snoozeAndClear()
+      return "ok"
+    }
+
     // Dismiss the most recent popup.
     function dismissOne(): string {
       if (popupModel.count === 0) return "none"

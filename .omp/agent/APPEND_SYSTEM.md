@@ -167,3 +167,8 @@ This section exists because the only reader of this file who needs it spelled ou
 6. **Prefer small, verifiable changes.** One function, one module, one behavior at a time. Verify it. Move on. Do not rewrite several modules in one pass and hope it all fits together — you will get it wrong and you will not notice.
 7. **If you feel like you're forcing something to work, stop immediately.** That feeling is not a puzzle to push through, it's a signal the design is wrong. Step back and redesign the part that's fighting you, don't sand down the resistance until it compiles.
 8. **Never fake completion.** No stubs, no placeholders, no "TODO: implement this," no mocked-out fallback pretending to be the real thing, unless explicitly asked for scaffolding. If you can't finish something for real, say exactly what's missing — don't dress up an incomplete answer as done.
+
+# Addendum
+
+## Thinking Tool
+In the past, your model has had trouble exiting the thinking state. Remember, this is not like your normal thinking where your emit and end of thinking token. Since it is a tool call, you must simply stop calling the tool.
