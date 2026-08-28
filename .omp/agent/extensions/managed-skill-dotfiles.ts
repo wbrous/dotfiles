@@ -9,9 +9,11 @@
 // existing `Add managed-skill: <name>` convention (create/update), and deletes
 // are committed too (`git rm`) so the backup copy tracks the on-disk truth.
 //
-// Mechanism: hook the `tool_result` event (fires after every tool executes with
-// { toolName, input, isError }). On a successful `manage_skill` create/update/
-// delete, run the bare-repo git mutation via pi.exec.
+// Notifications (commit/block/anomaly reports) are delivered with
+// `deliverAs: "nextTurn"` — NO `triggerTurn` — so they ride along with the
+// next real user message instead of scheduling their own continuation turn.
+// This avoids burning a token-costing turn right before omp's autolearn may
+// capture a new skill from the same session.
 //
 // Guardrails:
 //   - Never `add -A`/`git rm -r`; only the single <name>/SKILL.md path.
@@ -115,7 +117,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 							display: true,
 							attribution: "user",
 						},
-						{ triggerTurn: true },
+						{ deliverAs: "nextTurn" },
 					);
 					return;
 				}
@@ -135,7 +137,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 							display: true,
 							attribution: "user",
 						},
-						{ triggerTurn: true },
+						{ deliverAs: "nextTurn" },
 					);
 					return;
 				}
@@ -154,7 +156,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 							display: true,
 							attribution: "user",
 						},
-						{ triggerTurn: true },
+						{ deliverAs: "nextTurn" },
 					);
 					return;
 				}
@@ -167,7 +169,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 						display: true,
 						attribution: "user",
 					},
-					{ triggerTurn: true },
+					{ deliverAs: "nextTurn" },
 				);
 				return;
 			}
@@ -185,7 +187,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 						display: true,
 						attribution: "user",
 					},
-					{ triggerTurn: true },
+					{ deliverAs: "nextTurn" },
 				);
 				return;
 			}
@@ -201,7 +203,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 						display: true,
 						attribution: "user",
 					},
-					{ triggerTurn: true },
+					{ deliverAs: "nextTurn" },
 				);
 				return;
 			}
@@ -240,7 +242,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 						display: true,
 						attribution: "user",
 					},
-					{ triggerTurn: true },
+					{ deliverAs: "nextTurn" },
 				);
 				return;
 			}
@@ -253,7 +255,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 					display: true,
 					attribution: "user",
 				},
-				{ triggerTurn: true },
+				{ deliverAs: "nextTurn" },
 			);
 		} finally {
 			inFlight.delete(name);
