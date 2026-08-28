@@ -60,8 +60,19 @@ interface BareGit {
  * expansion of the `dotfiles` shell alias) rather than GIT_DIR/GIT_WORK_TREE
  * env vars, because pi.exec's ExecOptions does not forward `env` — the git
  * command must point at the bare repo itself, not inherit the caller's env.
+ *
+ * Marks the git subprocess as agent-driven so the shared `prepare-commit-msg`
+ * hook (see the git-scoped-coauthor-trailer skill) appends the
+ * `Co-authored-by: wbrous-dev-ai` trailer to the commit. The hook gates on
+ * `OMPCODE=1`, which `pi.exec` does not inherit (the harness only injects
+ * `OMPCODE` into the per-tool bash env, not the omp process env the extension
+ * runs in), so we set it on this process before spawning — Bun child
+ * processes inherit `process.env` by default when no `env` option is passed.
+ * Setting it here (rather than only at commit time) keeps every git call
+ * uniformly marked as agent-driven.
  */
 async function bareGit(pi: ExtensionAPI, ...args: string[]): Promise<BareGit> {
+	process.env.OMPCODE = "1";
 	const result = await pi.exec(
 		"git",
 		[`--git-dir=${DOTFILES_DIR}`, `--work-tree=${homedir()}`, ...args],
