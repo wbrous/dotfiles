@@ -27,4 +27,13 @@ export PATH="$HOME/.local/bin:$PATH"
 # Android Studio
 export ANDROID_HOME="$HOME/Android/Sdk"
 export PATH="$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin"
-alias dotfiles='git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
+# dotfiles: bare-repo alias, but route `push` through dotfiles-push so unpushed
+# unsigned commits get re-signed and pushed in one command (no re-run).
+dotfiles() {
+	if [ "${1:-}" = "push" ]; then
+		shift 1
+		command dotfiles-push "$@"
+	else
+		git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"
+	fi
+}

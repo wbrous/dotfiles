@@ -33,7 +33,7 @@ set -u
 [ "${GIT_PRE_PUSH_RESIGNED:-}" = "1" ] && exit 0
 
 # pre-push stdin: "<local-ref> <local-oid> <remote-ref> <remote-oid>" per line
-RESIGNED=0
+NCOMMITS=0
 MSG=""
 while IFS=' ' read -r local_ref local_oid remote_ref remote_oid; do
   [ -z "$local_ref" ] && continue
@@ -68,7 +68,7 @@ while IFS=' ' read -r local_ref local_oid remote_ref remote_oid; do
   [ -z "$unsigned" ] && continue
 
   MSG="${MSG}${MSG:+ }${local_ref}->${remote_ref}"
-  RESIGNED=$((RESIGNED + 1))
+  NCOMMITS=$((NCOMMITS + $(printf '%s\n' "$unsigned" | grep -c .)))
 
   # Sign every unpushed unsigned commit via one rebase-and-amend pass.
   # shellcheck disable=SC2086
@@ -82,12 +82,13 @@ while IFS=' ' read -r local_ref local_oid remote_ref remote_oid; do
   break
 done
 
-if [ "$RESIGNED" -gt 0 ]; then
+if [ "$NCOMMITS" -gt 0 ]; then
   echo
-  echo "pre-push: re-signed ${RESIGNED} unpushed unsigned commit(s) on ${MSG}."
-  echo "pre-push: fingerprint was required per commit (gpg cache-ttl=0)."
+  echo "pre-push: re-signed ${NCOMMITS} unpushed unsigned commit(s) on ${MSG}."
+  echo "pre-push: one fingerprint scan cached for the batch (gpg default-cache-ttl is now 300s)."
   echo "pre-push: THIS push was ABORTED so the rewritten refs take effect."
   echo "pre-push: re-run the push command to push the now-signed commits."
+  echo "pre-push: (for the one-command flow, use \`dotfiles push\` — dotfiles-push handles it.)"
   exit 1
 fi
 exit 0
