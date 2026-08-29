@@ -1,0 +1,98 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/wils/.local/share/mise/installs/node/25.2.1/bin/node' '/home/wils/.cache/.bun/bin/kanban' 'hooks' 'ingest' '--event' 'to_review' '--source' 'claude'"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/wils/.local/share/mise/installs/node/25.2.1/bin/node' '/home/wils/.cache/.bun/bin/kanban' 'hooks' 'ingest' '--event' 'activity' '--source' 'claude'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/wils/.local/share/mise/installs/node/25.2.1/bin/node' '/home/wils/.cache/.bun/bin/kanban' 'hooks' 'ingest' '--event' 'activity' '--source' 'claude'"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/wils/.local/share/mise/installs/node/25.2.1/bin/node' '/home/wils/.cache/.bun/bin/kanban' 'hooks' 'ingest' '--event' 'to_review' '--source' 'claude'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/wils/.local/share/mise/installs/node/25.2.1/bin/node' '/home/wils/.cache/.bun/bin/kanban' 'hooks' 'ingest' '--event' 'to_in_progress' '--source' 'claude'"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/wils/.local/share/mise/installs/node/25.2.1/bin/node' '/home/wils/.cache/.bun/bin/kanban' 'hooks' 'ingest' '--event' 'to_in_progress' '--source' 'claude'"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/wils/.local/share/mise/installs/node/25.2.1/bin/node' '/home/wils/.cache/.bun/bin/kanban' 'hooks' 'ingest' '--event' 'to_review' '--source' 'claude'"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/wils/.local/share/mise/installs/node/25.2.1/bin/node' '/home/wils/.cache/.bun/bin/kanban' 'hooks' 'ingest' '--event' 'activity' '--source' 'claude'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/wils/.local/share/mise/installs/node/25.2.1/bin/node' '/home/wils/.cache/.bun/bin/kanban' 'hooks' 'ingest' '--event' 'to_in_progress' '--source' 'claude'"
+          }
+        ]
+      }
+    ]
+  }
+}
