@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "entries": {
+    "zep": {
+      "workspaceId": "zep",
+      "repoPath": "/home/wils/Documents/Development/zep"
+    }
+  },
+  "repoPathToId": {
+    "/home/wils/Documents/Development/zep": "zep"
+  }
+}
