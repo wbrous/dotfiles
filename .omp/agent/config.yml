@@ -1,11 +1,11 @@
-providers: 
+providers:
   {}
 symbolPreset: nerd
-theme: 
-  dark: dark-nord
-  light: light
+theme:
+  dark: omarchy
+  light: omarchy
 setupVersion: 2
-modelRoles: 
+modelRoles:
   plan: anthropic/claude-sonnet-5:high
   tiny: opencode-go/deepseek-v4-flash:xhigh
   slow: anthropic/claude-sonnet-5:medium
@@ -17,18 +17,26 @@ modelRoles:
   commit: opencode-go/deepseek-v4-flash:high
   task: opencode-go/deepseek-v4-flash:xhigh
 defaultThinkingLevel: auto
-retry: 
-  fallbackChains: 
+retry:
+  fallbackChains:
     {}
 externalThinking: true
 personality: pragmatic
 steeringMode: all
-autolearn: 
+autolearn:
   enabled: true
   autoContinue: true
-memory: 
+memory:
   backend: "off"
-github: 
+github:
   enabled: true
-composer: 
+composer:
   shape: pi
+secrets:
+  enabled: false
+colorBlindMode: false
+display:
+  smoothStreaming: true
+  cacheMissMarker: true
+  showTurnTime: true
+  showTokenUsage: true

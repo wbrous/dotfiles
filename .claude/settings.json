@@ -4,7 +4,7 @@
     "pr": ""
   },
   "model": "sonnet",
-  "hooks": {},
+  "hooks": {"SessionStart":[{"matcher":"*","hooks":[{"type":"command","command":"bash '/home/wils/.claude/hooks/herdr-agent-state.sh' session","timeout":10}]}]},
   "effortLevel": "high",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
