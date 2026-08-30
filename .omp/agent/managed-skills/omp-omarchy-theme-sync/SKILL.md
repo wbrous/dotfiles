@@ -1,6 +1,6 @@
 ---
 name: omp-omarchy-theme-sync
-description: "Use when building or debugging a mechanism that syncs the omp (oh-my-pi) coding-agent theme with the currently active Omarchy Linux theme — e.g. \"sync omp theme with omarchy theme\", \"apply my omarchy colors to omp\", or when an omp custom theme JSON needs to be generated from an Omarchy colors.toml. Covers the working two-part design (omarchy theme-set hook + omp extension), the exact source-of-truth paths, the full color-token mapping, the python-yq (not go-yq) in-place syntax gotcha on Arch/Omarchy, the symlinked-hook approach, and why both theme.dark and theme.light must point at the same generated theme."
+description: "Use when building or debugging a mechanism that syncs the omp (oh-my-pi) coding-agent theme with the currently active Omarchy Linux theme — e.g. \"sync omp theme with omarchy theme\", \"apply my omarchy colors to omp\", or when an omp custom theme JSON needs to be generated from an Omarchy colors.toml. Covers the working two-part design (omarchy theme-set hook + omp extension), the exact source-of-truth paths, the full color-token mapping, the python-yq (not go-yq) in-place syntax gotcha on Arch/Omarchy, the symlinked-hook approach, dotfiles sync status of the artifacts, and why both theme.dark and theme.light must point at the same generated theme."
 ---
 
 ## Goal
@@ -21,6 +21,14 @@ Generate an omp custom theme (`~/.omp/agent/themes/omarchy.json`) from the curre
 3. **omp extension** (`~/.omp/agent/extensions/*.ts`): on `session_start`, spawn the same shared script (`node:child_process` `spawnSync`), then if `ctx.hasUI`, call `await ctx.ui.setTheme("omarchy")` to apply immediately without a restart. `ctx.ui.setTheme(name)` loads and applies any theme (built-in or custom) by name. The extension references the script via `join(homedir(), ".omp/omarchy-theme-sync.sh")`.
 
 This covers both paths: theme switched while omp isn't running (hook writes the file), and omp started fresh (extension re-syncs + applies live).
+
+## Dotfiles sync (bare repo)
+
+Both artifacts are tracked in the dotfiles bare repo (`~/.dotfiles`, commit convention "Add omp-omarchy theme sync script and extension"):
+- `.omp/omarchy-theme-sync.sh` — canonical script (mode 100755)
+- `.omp/agent/extensions/omarchy-theme-sync.ts` — extension (mode 100644)
+
+The `theme-set.d/omarchy-theme-sync.sh` hook entry is a **machine-specific symlink and deliberately NOT tracked** — recreate on a fresh machine with `ln -sf ~/.omp/omarchy-theme-sync.sh ~/.config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh` (matches the repo's convention of only tracking `.sample` hooks under `theme-set.d/`). The generated `~/.omp/agent/themes/omarchy.json` is derived state and is NOT tracked (changes on every theme switch).
 
 ## omp theme JSON: color token mapping from Omarchy palette
 
