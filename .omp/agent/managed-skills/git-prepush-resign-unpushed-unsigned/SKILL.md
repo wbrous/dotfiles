@@ -1,6 +1,6 @@
 ---
 name: git-prepush-resign-unpushed-unsigned
-description: "Use when setting up or debugging the global pre-push hook that GPG-resigns unpushed unsigned commits before push, or the one-command git push/dotfiles push flow — covers the fundamental pre-push limitation (a hook alone cannot complete a push in one command; stale-SHA \"remote rejected\" error even though the re-invoked push lands), the GIT_PRE_PUSH_RESIGNED re-entry guard, the shell-level git() function routing every git push through ~/.local/bin/git-push-resign (generic, any repo) and dotfiles() routing through the same script via GIT_DIR/GIT_WORK_TREE, gpg-agent default-cache-ttl 300 for single-fingerprint batches, the dev-time unsigned vs push-time signed split (commit.gpgsign=false on ~/.dotfiles), the new-branch/no-upstream footgun where resigning is silently skipped, and headless testing with a throwaway no-passphrase GPG key."
+description: "Use when setting up or debugging the global pre-push hook that GPG-resigns unpushed unsigned commits before push, or the one-command git push/dotfiles push flow — covers the fundamental pre-push limitation (a hook alone cannot complete a push in one command; stale-SHA \"remote rejected\" error even though the re-invoked push lands), the GIT_PRE_PUSH_RESIGNED re-entry guard, the shell-level git() function routing every git push through ~/.local/bin/git-push-resign (generic, any repo) and dotfiles() routing through the same script via GIT_DIR/GIT_WORK_TREE, gpg-agent default-cache-ttl 300 for single-fingerprint batches, the dev-time unsigned vs push-time signed split (commit.gpgsign=false on ~/.dotfiles), the new-branch/no-upstream footgun where resigning is silently skipped, headless testing with a throwaway no-passphrase GPG key, and which pieces of this setup are dotfiles-synced vs machine-local when cloning onto a new machine."
 ---
 
 # Pre-push GPG resign of unpushed unsigned commits — one-command `git push` for every repo
@@ -38,6 +38,19 @@ Split dev-time signing from push-time signing: managed-skill auto-commits and do
 - `gpg-agent.conf`: `default-cache-ttl 300` / `max-cache-ttl 300` (WAS 0). One fingerprint scan caches the passphrase ~5 min so a batch of amend-signs prompts ONCE. File is root:root 644 — edits need sudo; gpg-agent reads it only at startup → `systemctl --user restart gpg-agent.service` after changing. NOTE the printf-escaping trap when writing it via sudo sh -c (use a `<<'EOF'` heredoc instead).
 
 Previously there was a dotfiles-only `~/.local/bin/dotfiles-push` script and a plain `git push` from any other repo hit the hook's abort-and-ask-to-rerun path. Both are gone: `git-push-resign` is the single generic engine, and the `git()` shell function makes EVERY interactive `git push` one-command, not just dotfiles. `dotfiles-push` was deleted.
+
+## What's dotfiles-synced vs machine-local (matters when cloning onto a new machine)
+
+Dotfiles-tracked (restored automatically on clone):
+- `~/.bashrc` → the `git()`/`dotfiles()` functions.
+- `~/.config/git/config` → `core.hooksPath`, `[coauthor-hook]` trailer setting, `commit.gpgsign = true`.
+- `~/.config/git/hooks/{pre-push,pre-commit,pre-commit.pre-watermarks-remover,prepare-commit-msg}` → gitleaks scan, resign-safety-net, coauthor trailer injection.
+- `~/.local/bin/git-push-resign` → the resign engine itself (added 2026-08-29, commit 942dc01).
+
+NOT dotfiles-tracked (must be redone by hand on a fresh machine, or accepted as a gap):
+- `~/.gnupg/gpg-agent.conf` — root:root owned, outside `$HOME`'s git-visible ownership boundary, holds the `default-cache-ttl 300` tweak. A fresh machine gets gpg-agent's default `ttl 0` (fingerprint prompt per amend-sign in a resign batch) until this is redone.
+- The rest of `~/.local/bin` (mise/tool shims like `gh`, `claude`, `python3.11`, `pi`, `omp`, etc.) is intentionally left untracked — only hand-written scripts like `git-push-resign` get added, not vendor-managed shims.
+- `~/.local/bin` on `PATH` is handled by the tracked `.bashrc`/omarchy rc (`export PATH="$HOME/.local/bin:$PATH"`), so that part IS automatic.
 
 ## CRITICAL: why the pre-push hook alone cannot push in one command (empirically verified)
 
