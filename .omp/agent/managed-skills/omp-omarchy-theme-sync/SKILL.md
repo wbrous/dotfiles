@@ -1,6 +1,6 @@
 ---
 name: omp-omarchy-theme-sync
-description: "Use when building or debugging a mechanism that syncs the omp (oh-my-pi) coding-agent theme with the currently active Omarchy Linux theme — e.g. \"sync omp theme with omarchy theme\", \"apply my omarchy colors to omp\", or when an omp custom theme JSON needs to be generated from an Omarchy colors.toml. Covers the working two-part design (omarchy theme-set hook + omp extension), the exact source-of-truth paths, the full color-token mapping, the python-yq (not go-yq) in-place syntax gotcha on Arch/Omarchy, and why both theme.dark and theme.light must point at the same generated theme."
+description: "Use when building or debugging a mechanism that syncs the omp (oh-my-pi) coding-agent theme with the currently active Omarchy Linux theme — e.g. \"sync omp theme with omarchy theme\", \"apply my omarchy colors to omp\", or when an omp custom theme JSON needs to be generated from an Omarchy colors.toml. Covers the working two-part design (omarchy theme-set hook + omp extension), the exact source-of-truth paths, the full color-token mapping, the python-yq (not go-yq) in-place syntax gotcha on Arch/Omarchy, the symlinked-hook approach, and why both theme.dark and theme.light must point at the same generated theme."
 ---
 
 ## Goal
@@ -15,9 +15,10 @@ Generate an omp custom theme (`~/.omp/agent/themes/omarchy.json`) from the curre
 
 ## Design: two parts, one shared script
 
-1. **Shared conversion script** (canonical location, e.g. `~/.local/share/omp/omarchy-theme-sync.sh`): reads `colors.toml`, writes the full omp theme JSON, and updates `~/.omp/agent/config.yml`.
-2. **Omarchy `theme-set` hook**: `omarchy hook install theme-set <script>` — this **copies** the script into `~/.config/omarchy/hooks/theme-set.d/`, it does NOT symlink. After editing the canonical script, re-copy it into the hooks.d dir (or re-run `omarchy hook install`) or the installed copy silently goes stale.
-3. **omp extension** (`~/.omp/agent/extensions/*.ts`): on `session_start`, spawn the same shared script (`node:child_process` `spawnSync`), then if `ctx.hasUI`, call `await ctx.ui.setTheme("omarchy")` to apply immediately without a restart. `ctx.ui.setTheme(name)` loads and applies any theme (built-in or custom) by name.
+1. **Shared conversion script** (canonical location: `~/.omp/omarchy-theme-sync.sh`): reads `colors.toml`, writes the full omp theme JSON, and updates `~/.omp/agent/config.yml`. Keep it OUT of `~/.local/share/omp/` — that XDG-data path is not the active agent dir for this setup and its presence confuses state resolution.
+2. **Omarchy `theme-set` hook**: `omarchy hook install theme-set <script>` **copies** the script into `~/.config/omarchy/hooks/theme-set.d/`, but that's not required — Omarchy doesn't care if it's a symlink. Prefer a **symlink to the canonical script** so edits propagate without re-copying. Keep the canonical script at `~/.omp/omarchy-theme-sync.sh` and point the hook at it:
+   `ln -sf ~/.omp/omarchy-theme-sync.sh ~/.config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh`
+3. **omp extension** (`~/.omp/agent/extensions/*.ts`): on `session_start`, spawn the same shared script (`node:child_process` `spawnSync`), then if `ctx.hasUI`, call `await ctx.ui.setTheme("omarchy")` to apply immediately without a restart. `ctx.ui.setTheme(name)` loads and applies any theme (built-in or custom) by name. The extension references the script via `join(homedir(), ".omp/omarchy-theme-sync.sh")`.
 
 This covers both paths: theme switched while omp isn't running (hook writes the file), and omp started fresh (extension re-syncs + applies live).
 
@@ -57,11 +58,15 @@ yq -i -y '.theme.dark = "omarchy" | .theme.light = "omarchy"' "$CONFIG_FILE"
 
 python-yq's expression is real jq syntax (double-quote strings, `|` to pipe multiple assignments), unlike go-yq's own dialect. Round-tripping through jq/python also normalizes formatting (e.g. `{}` block-style vs `{}` flow-style, quote style, trailing newline) — harmless but shows up in diffs.
 
+## Gotcha: `~/.local/share/omp/` is NOT the agent dir
+
+The real agent data dir on this machine is `~/.omp/agent/` (config.yml, agent.db with credentials, models.db). The omp extension discovery path and theme dir are `~/.omp/agent/...`. Do NOT place theme-sync state under `~/.local/share/omp/` — an empty dir there can be mistaken for the active state root and leads to "No model selected" (empty credentials). If a stray empty `~/.local/share/omp/` appears, remove it (`rm -rf ~/.local/share/omp/`) — it's scaffolding, not real data; all real data lives under `~/.omp/`.
+
 ## Verification approach (no live terminal needed)
 
 1. `bash -n script.sh` for syntax.
 2. Run the script twice in a row to confirm idempotency.
 3. `python3 -m json.tool generated-theme.json` for JSON validity.
 4. Diff the generated JSON's `colors` keys against the real schema's `required` array (find `theme-schema.json` in an installed npm package) — confirms zero missing tokens without needing to launch omp interactively.
-5. A `omp -p "..."` smoke run can fail early on missing API keys before reaching `session_start`/extension load — that's expected in a sandboxed/unauthenticated environment and doesn't indicate an extension bug; check `~/.omp/logs/omp.<date>.<pid>.log` for actual extension load errors if the process gets far enough.
+5. A `omp -p "..."` smoke run can fail early on missing API keys before reaching `session_start`/extension load — that's expected in a sandboxed/unauthenticated environment and doesn't indicate an extension bug. BUT be warned: launching `omp` itself may create a fresh `~/.local/share/omp/` scaffold; clean it up after.
 6. Always back up and restore `~/.omp/agent/config.yml` around test runs that mutate the user's real `theme.dark`/`theme.light` settings — a verification pass should leave the user's actual configuration untouched unless they've asked for the change to stick.
