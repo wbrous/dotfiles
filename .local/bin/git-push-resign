@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# git-push-resign: generic one-command version of dotfiles-push for ANY repo.
+#
+# Same problem dotfiles-push solves, but for whatever repo the current working
+# directory is in: git's `pre-push` hook cannot complete a push in one command
+# (by the time it runs, the refs to send are already resolved, so re-signing
+# mid-hook makes the outer push send a stale SHA and get rejected). So this
+# wrapper does the resign itself, in the CALLING shell, before the real push
+# ever starts — then execs the real push with the caller's exact arguments.
+#
+# Invoked via the `git()` shell function in ~/.bashrc, which routes
+# `git push ...` through this script instead of straight to git. The global
+# pre-push hook (~/.config/git/hooks/pre-push) remains as a safety net for
+# pushes that bypass the shell function (other shells, IDEs, scripts): it
+# still resigns-then-aborts in that case, telling the user to re-run.
+#
+# Only touches UNPUSHED commits on the branch actually being pushed via the
+# resolvable @{upstream} — already-published history is never rewritten.
+set -u
+
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+if [ -z "$branch" ] || [ "$branch" = "HEAD" ]; then
+  # Not on a branch (detached HEAD, or not a git repo) — nothing to resign.
+  export GIT_PRE_PUSH_RESIGNED=1
+  exec git push "$@"
+fi
+
+base="$(git rev-parse --abbrev-ref --symbolic-full-name "@{upstream}" 2>/dev/null)"
+base="${base#refs/remotes/}"
+
+to_sign=""
+if [ -n "$base" ]; then
+  unpushed="$(git rev-list "$base"..HEAD 2>/dev/null || true)"
+  for sha in $unpushed; do
+    git cat-file -p "$sha" 2>/dev/null | grep -q '^gpgsig' || to_sign="$to_sign $sha"
+  done
+fi
+
+if [ -n "$to_sign" ]; then
+  n=$(echo "$to_sign" | wc -w | tr -d ' ')
+  echo "git-push: re-signing $n unpushed unsigned commit(s) (one fingerprint scan)..."
+  if ! git rebase --rebase-merges --exec 'git commit --amend --no-edit -S' "$base" 2>&1; then
+    echo "git-push: ERROR — resign rebase failed. Resolve conflicts, then run 'git push' again." >&2
+    exit 1
+  fi
+  echo "git-push: resigned. pushing now."
+fi
+
+# Sole resign authority for this push: mark the global pre-push hook as
+# already-resigned so it exits immediately instead of re-scanning/aborting.
+export GIT_PRE_PUSH_RESIGNED=1
+exec git push "$@"
