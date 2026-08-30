@@ -1,53 +1,47 @@
 ---
 name: qemu-anti-detection-vm-network-debug
-description: "Use when the Windows guest on the libvirt/patched-QEMU anti-detection VM (UndetectableVM, e1000e NIC) shows \"Unidentified network\" / no internet / no traffic — covers the host-side verification procedure (network active, dnsmasq leases, tap-on-bridge, tcpdump on the tap) that proves whether the fault is host or guest, and the guest-side fixes for a silent-but-present e1000e adapter (Disable/Enable, driver rebind, jumbo packet/interrupt moderation, NIC model swap to e1000)."
+description: "Diagnose a silent/unidentified NIC in the qemu-anti-detection UndetectableVM libvirt guest on this host: host-side verification (tap on virbr0, dnsmasq leases, tcpdump), guest-side triage (disable/enable, Device Manager), and the e1000e→e1000 NIC-model swap fix with the stop/define/start procedure"
 ---
 
-# QEMU Anti-Detection VM — Silent NIC / "Unidentified Network" Debug
+# qemu-anti-detection VM network debug
 
-Symptom: Windows guest on the anti-detection VM (libvirt `UndetectableVM`, patched QEMU 10.2.2, e1000e NIC, hidden hypervisor) shows "Unidentified network" or no internet. Windows *sees* the adapter but it transmits nothing.
+Use when the UndetectableVM (or any libvirt VM on this machine) shows "Unidentified network" / no internet in Windows, or the guest NIC appears present but transmits nothing.
 
-## Host-side verification (proves host is healthy, fault is in guest)
+## Host-side verification (proves host healthy in ~30s)
 
-Run as sudo (fingerprint-gated on Omarchy; use a PTY/hub session — `sudo -n` fails silently):
+1. `sudo virsh net-list --all` — `default` must be `active`. If not: `sudo virsh net-start default && sudo virsh net-autostart default`.
+2. `ip -brief addr show virbr0` — must be UP with `192.168.122.1/24`.
+3. `pgrep -af dnsmasq` — libvirt dnsmasq must be running (`--conf-file=/var/lib/libvirt/dnsmasq/default.conf`).
+4. `cat /var/lib/libvirt/dnsmasq/default.leases` — non-empty means guest got a lease; **empty + ARP empty = guest transmits nothing**.
+5. Tap attached: `bridge link show master virbr0` — look for `vnetN` master virbr0.
+6. **Decisive test**: `sudo timeout 12 tcpdump -i vnetN -nn` (the guest's tap). If only STP BPDUs appear and zero guest frames (no DHCP DISCOVER/ARP), the **guest NIC is silent — host is blameless**.
+   - tcpdump may need installing: `sudo pacman -S --noconfirm tcpdump`.
+   - Note: the vnet port's displayed MAC shows the locally-administered bit flipped (`fe:bc:…` vs domain's `f0:bc:…`) — that's normal bridge behavior.
 
-```bash
-# 1. Network active + virbr0 up
-virsh net-list --all                  # default should be active
-ip -brief addr show virbr0            # 192.168.122.1/24 UP
+## Guest-side triage (in Windows, via SPICE console)
 
-# 2. dnsmasq serving + lease history
-pgrep -af dnsmasq
-cat /var/lib/libvirt/dnsmasq/default.leases   # EMPTY = guest never got a lease
-virsh net-dhcp-leases default
+1. `ncpa.cpl` → right-click Ethernet → **Disable → Enable** (forces driver rebind + DHCP retry). Most common fix for silent-but-present adapter.
+2. Device Manager → Network adapters → check for yellow bang / Code 10. If present: Update driver → Search automatically.
+3. No warning sign + disable/enable didn't help → the adapter is bound but never transmits: **swap the NIC model** (below).
+4. Adapter Properties → Advanced → disable Jumbo Packet and Interrupt Moderation (occasional silent-failure culprits under hidden-hypervisor VMs).
 
-# 3. Tap attached to bridge
-ip -d link show vnet5                 # master virbr0, state forwarding, promisc
+## NIC model swap (e1000e → e1000)
 
-# 4. Definitive test — capture on the tap itself (not virbr0)
-sudo timeout 12 tcpdump -i vnet5 -nn -c 30
-# Guest healthy  → DHCP DISCOVER / ARP / broadcast traffic
-# Guest silent   → only STP BPDUs every ~2s (bridge's own frames) = guest NIC transmits NOTHING
-```
+The anti-detection XML uses `e1000e` (Intel 82574L). If Windows binds it but the guest sends zero frames (verified via tap capture), swap to plain `e1000` (Intel 82540EM — Windows 10 has inbox drivers, very robust under q35 + hidden hypervisor + SMM/OVMF).
 
-Interpretation:
-- `default.leases` empty + ARP table on virbr0 empty + tap capture shows only STP → **guest-side problem, host network 100% healthy**. Not NAT/firewall/ufw (FORWARD drop rules only matter for L3 outbound; bridge-local DHCP/ARP is L2 and worked fine for the Reference VM).
-- tcpdump is not installed by default on Arch — `pacman -S tcpdump`.
-- Stale libvirtd errors about "nonexistent bridge WiFi Card" in `journalctl -u libvirtd` are transient from redefines; ignore if current `virsh dumpxml` interface shows `type='network'` + `bridge='virbr0'` + `e1000e`.
+Procedure:
+1. Edit `/tmp/vm-anti-detect/undetectable-vm-win10.xml`: `<model type="e1000e"/>` → `<model type="e1000"/>` (use the edit tool's `»` block form; the `⟪⟫` inline form can be finicky).
+2. Validate: `virt-xml-validate /tmp/vm-anti-detect/undetectable-vm-win10.xml` (MUST pass; `virsh define` silently drops invalid devices — see below).
+3. `sudo virsh destroy UndetectableVM && sudo virsh define undetectable-vm-win10.xml && sudo virsh start UndetectableVM`.
+4. Verify running process: `ps -eo args | grep qemu-system | grep -oE '"e1000"'` — must show `"e1000"` not `"e1000e"`.
+5. In Windows the new adapter enumerates as "Intel(R) PRO/1000 MT Desktop Adapter"; give it ~30s to DHCP after boot before judging.
 
-## Why: guest-side silent-but-present adapter
+## Critical libvirt gotchas (learned the hard way)
 
-Windows 10 bundles the e1000e driver (Intel 82574L), so it's almost never a *missing* driver. The anti-detection config (hidden hypervisor, `hv-vendor-id=GenuineIntel`, spoofed CPUID, SMM+OVMF) can leave the adapter bound but not transmitting — a truly broken driver would show a yellow bang / Code 10 instead.
-
-## Guest-side fixes, in order
-
-1. **Disable → Enable** the adapter: `Win+R` → `ncpa.cpl` → right-click Ethernet → Disable, then Enable (forces driver rebind + DHCP retry). Most likely fix.
-2. Device Manager → Network adapters → Intel(R) 82574L → Update driver → Search automatically, then reboot guest.
-3. Adapter Properties → Advanced → set **Jumbo Packet** and **Interrupt Moderation** to **Disabled**, then Disable/Enable again.
-4. If still dead: **swap NIC model `e1000e` → `e1000`** in the domain XML (simpler, more bulletproof Intel model for Windows; slightly less realistic device name but still real Intel ID — minor anti-detection tradeoff). Requires stop/define/start; disk persists.
-
-## Environment specifics
-
-- Host: Omarchy/Arch, libvirt 12.x, patched QEMU 10.2.2 at `/usr/local/bin` (libvirt resolves it), ufw + Tailscale `ts-*` chains present (not the cause).
-- VM: `UndetectableVM`, `pc-q35-10.2`, OVMF UEFI, SPICE/QXL display, e1000e on `default` NAT network (192.168.122.0/24).
-- `virsh` from a user shell shows empty lists until re-login picks up the `libvirt` group; use `sudo virsh` via PTY.
+- **`virsh define` SILENTLY DROPS devices** whose XML placement is schema-invalid (e.g. `<controller>` outside `<devices>`) — the domain "defines" OK but loses disks/interfaces. Always `virt-xml-validate` before define, and verify with `virsh dumpxml | grep <device>` after.
+- The anti-detection guide's XML has NO `<graphics>`/`<video>` — add SPICE + QXL (mirror virt-manager defaults: `<graphics type="spice" autoport="yes">`, QXL video, usb-tablet, virtio-serial + spicevmc channel, ich9 sound + spice audio, 2× redirdev) or virt-manager shows "no graphical interface configured for guest".
+- OVMF on Arch lives at `/usr/share/edk2/x64/OVMF_CODE.4m.fd` / `OVMF_VARS.4m.fd` (not the guide's non-`.4m` paths).
+- qemu-anti-detection has no patch for QEMU 11.x; newest usable patch is `qemu-10.2.2.patch` against QEMU 10.2.2, installed to `/usr/local/bin` (libvirt picks it up for x86_64).
+- libvirt-qemu can't traverse `/home/wils` (700) — keep disks/ISOs under `/var/lib/libvirt/images/`.
+- `virsh` from the user's shell fails until re-login picks up the `libvirt` group; use `sudo virsh` (fingerprint-gated — the polkit prompt appears on the desktop; the user must scan).
+- Windows install status check: `qemu-img info` / `du -h` on `/var/lib/libvirt/images/disk.img` — non-trivial size means the guest OS is installed.
