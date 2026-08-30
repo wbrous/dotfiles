@@ -1,5 +1,4 @@
-providers:
-  {}
+providers: {}
 symbolPreset: nerd
 theme:
   dark: omarchy
@@ -18,8 +17,7 @@ modelRoles:
   task: opencode-go/deepseek-v4-flash:xhigh
 defaultThinkingLevel: auto
 retry:
-  fallbackChains:
-    {}
+  fallbackChains: {}
 externalThinking: true
 personality: pragmatic
 steeringMode: all
@@ -27,7 +25,7 @@ autolearn:
   enabled: true
   autoContinue: true
 memory:
-  backend: "off"
+  backend: 'off'
 github:
   enabled: true
 composer:
