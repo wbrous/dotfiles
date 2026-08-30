@@ -1,115 +1,67 @@
 ---
 name: omp-omarchy-theme-sync
-description: "Use when building or debugging a mechanism that syncs the omp (oh-my-pi) coding-agent theme with the currently active Omarchy Linux theme — e.g. \"sync omp theme with omarchy theme\", \"apply my omarchy colors to omp\", or when an omp custom theme JSON needs to be generated from an Omarchy colors.toml. Covers the working two-part design (omarchy theme-set hook + omp extension), the exact source-of-truth paths, the full color-token mapping, and the python-yq (not go-yq) in-place syntax gotcha on Arch/Omarchy."
+description: "Use when building or debugging a mechanism that syncs the omp (oh-my-pi) coding-agent theme with the currently active Omarchy Linux theme — e.g. \"sync omp theme with omarchy theme\", \"apply my omarchy colors to omp\", or when an omp custom theme JSON needs to be generated from an Omarchy colors.toml. Covers the working two-part design (omarchy theme-set hook + omp extension), the exact source-of-truth paths, the full color-token mapping, the python-yq (not go-yq) in-place syntax gotcha on Arch/Omarchy, and why both theme.dark and theme.light must point at the same generated theme."
 ---
 
-## Working design (verified on this machine)
+## Goal
 
-Two independent pieces sharing one conversion script, matching Omarchy's own
-event model (a hook fires on theme switch; nothing else pushes updates):
+Generate an omp custom theme (`~/.omp/agent/themes/omarchy.json`) from the currently active Omarchy theme's palette, keep it in sync whenever the Omarchy theme changes, and apply it in omp on startup.
 
-1. **Shared script** `~/.local/share/omp/omarchy-theme-sync.sh`
-   - Reads `~/.local/state/omarchy/current/theme/colors.toml` (the live
-     Omarchy theme's resolved palette — NOT `~/.config/omarchy/themes/*`,
-     which are just the source theme defs). Also has
-     `~/.local/state/omarchy/current/theme.name` (slug) and a `mode` key
-     inside colors.toml (`"dark"` or `"light"`).
-   - Parses the flat `key = "value"` TOML with a small `awk` `get()` helper
-     (no TOML library needed — the generated file is always flat).
-   - Writes a full omp custom theme to `<agentDir>/themes/omarchy.json`
-     (`agentDir` defaults `~/.omp/agent`, overridable via
-     `PI_CODING_AGENT_DIR`). Always names it `"omarchy"` — one theme file
-     that's regenerated in place, rather than per-omarchy-theme-name files.
-   - Updates `<agentDir>/config.yml`'s `theme.dark` or `theme.light` (whichever
-     matches Omarchy's `mode`) to `"omarchy"` via `yq -i -y '.theme.<slot> =
-     "omarchy"' file` — leaves the other slot untouched.
-   - No-ops safely (exit 0) if Omarchy has no active theme yet.
+## Source of truth paths (Omarchy)
 
-2. **Omarchy hook**: `omarchy hook install theme-set
-   ~/.local/share/omp/omarchy-theme-sync.sh` — copies it into
-   `~/.config/omarchy/hooks/theme-set.d/`. Fires after every `omarchy theme
-   set`, so the omp theme file is fresh even if omp isn't running.
-   **Gotcha**: `omarchy hook install` COPIES the script; it does not
-   symlink. Editing the canonical script later requires re-running the
-   install command to refresh the installed copy — diff the two paths to
-   check they still match.
+- Active theme colors: `~/.local/state/omarchy/current/theme/colors.toml` (flat `key = "value"` TOML, keys: `mode`, `accent`, `selection`, `muted`, `background`, `dark_background`, `darker_background`, `lighter_background`, `foreground`, `dark_foreground`, `light_foreground`, `bright_foreground`, `red`, `yellow`, `orange`, `green`, `cyan`, `blue`, `magenta`, `brown`, plus `bright_*` variants).
+- Active theme slug: `~/.local/state/omarchy/current/theme.name`.
+- **Not** `~/.config/omarchy/current/...` — that path doesn't exist; state lives under `~/.local/state/omarchy/current/`.
 
-3. **omp extension**: `~/.omp/agent/extensions/omarchy-theme-sync.ts` — on
-   `session_start`, `spawnSync`s the shared script (covers "theme changed
-   while omp wasn't running"), then if `ctx.hasUI`, calls `await
-   ctx.ui.setTheme("omarchy")` to apply live without requiring a restart.
-   `ctx.ui.setTheme(name)` takes any theme name (built-in or custom) and
-   loads+applies it immediately — this is how a prior unrelated extension in
-   this environment toggled between built-in `"light"`/`"dark"` themes too.
+## Design: two parts, one shared script
 
-## Color-token mapping (colors.toml -> omp theme colors)
+1. **Shared conversion script** (canonical location, e.g. `~/.local/share/omp/omarchy-theme-sync.sh`): reads `colors.toml`, writes the full omp theme JSON, and updates `~/.omp/agent/config.yml`.
+2. **Omarchy `theme-set` hook**: `omarchy hook install theme-set <script>` — this **copies** the script into `~/.config/omarchy/hooks/theme-set.d/`, it does NOT symlink. After editing the canonical script, re-copy it into the hooks.d dir (or re-run `omarchy hook install`) or the installed copy silently goes stale.
+3. **omp extension** (`~/.omp/agent/extensions/*.ts`): on `session_start`, spawn the same shared script (`node:child_process` `spawnSync`), then if `ctx.hasUI`, call `await ctx.ui.setTheme("omarchy")` to apply immediately without a restart. `ctx.ui.setTheme(name)` loads and applies any theme (built-in or custom) by name.
 
-Omarchy's `colors.toml` has a fixed flat schema: `accent`, `selection`,
-`muted`, `background`, `dark_background`, `darker_background`,
-`lighter_background`, `foreground`, `dark_foreground`, `light_foreground`,
-`bright_foreground`, `red/yellow/orange/green/cyan/blue/magenta/brown` (+
-`bright_*` variants), `mode`.
+This covers both paths: theme switched while omp isn't running (hook writes the file), and omp started fresh (extension re-syncs + applies live).
 
-omp's theme schema (see `omp://theme.md`) requires 51 color tokens across
-core text/borders, background blocks, message/tool text, markdown, diff +
-syntax highlighting, thinking-level borders, and status-line segments (full
-list validated against the runtime schema, not hand-guessed — every
-required key must be present or `setTheme` fails validation). Practical
-mapping used successfully:
+## omp theme JSON: color token mapping from Omarchy palette
 
-- `accent`→accent, `border`/`muted`/`thinkingText`→muted, `success`→green,
-  `error`→red, `warning`→yellow, `dim`→dark_foreground, `text`→foreground
-- `selectedBg`/`borderMuted`→selection, `*Bg` (user/custom/toolPending/
-  toolSuccess/toolError message backgrounds)→lighter_background (Omarchy
-  doesn't expose per-state tinted backgrounds, so these collapse to one)
-- markdown: heading/link/listBullet→accent, others→muted/foreground
-- diff: added→green, removed→red, context→muted
-- syntax: comment→dark_foreground, keyword→magenta, function→blue,
-  variable/operator→foreground, string→green, number→orange, type→cyan,
-  punctuation→muted
-- thinking ladder (off→xhigh): dark_foreground, muted, blue, cyan, magenta,
-  red; bashMode→cyan, pythonMode→magenta
-- statusLineBg→dark_background; other status segments reuse the same
-  green/yellow/cyan/red/orange/magenta/foreground assignments as above
+omp requires 51 color tokens (see `omp://theme.md`). A solid, defensible mapping from Omarchy's ~20 palette keys:
 
-Validate the generated JSON against the real schema before trusting it:
+- `accent`/`borderAccent`/`mdHeading`/`mdLink`/`mdListBullet` → `accent`
+- `border` → `muted`; `borderMuted`/`selectedBg` → `selection`
+- `success`/`toolDiffAdded`/`syntaxString` → `green`; `error`/`toolDiffRemoved` → `red`; `warning`/`statusLineGitDirty`/`statusLineDirty` → `yellow`
+- `text`/`toolTitle`/`syntaxVariable`/`mdCode*` → `foreground`; `dim`/`syntaxComment`/`thinkingOff` → `dark_foreground`
+- `userMessageBg`/`customMessageBg`/`toolPendingBg`/`toolSuccessBg`/`toolErrorBg` → `lighter_background` (fine to reuse one bg for all three tool states — no per-state blends available from the palette)
+- `statusLineBg` → `dark_background`
+- `syntaxKeyword`/`thinkingHigh`/`pythonMode`/`statusLineModel`/`statusLineSubagents` → `magenta`
+- `syntaxFunction`/`thinkingLow`/`statusLinePath` → `blue`; `syntaxType`/`thinkingMedium`/`bashMode`/`statusLineContext`/`statusLineSpend` → `cyan`
+- `syntaxNumber`/`statusLineCost` → `orange`
+- `syntaxOperator` → `foreground`; `syntaxPunctuation`/`toolDiffContext`/`mdQuote*`/`mdHr`/`mdLinkUrl`/`toolOutput`/`thinkingMinimal`/`statusLineSep` → `muted`
+- `thinkingXhigh`/`statusLineUntracked` → `red`; `statusLineGitClean`/`statusLineStaged` → `green`; `statusLineOutput` → `foreground`
+- Optional `thinkingMax` can be omitted — it falls back to `thinkingXhigh`.
+
+Validate against the real schema before shipping: find `theme-schema.json` under an installed `@earendil-works/pi-coding-agent` (or `@oh-my-pi/pi-coding-agent`) package (e.g. under `~/.local/share/*/node_modules/`), then check `required` colors list against generated JSON keys with a quick Python script.
+
+## Critical gotcha: `theme.dark` AND `theme.light` must both be set
+
+Omarchy only ever has one active theme at a time, and the terminal's real background already matches it. If you only update `theme.<mode>` (the slot matching the palette's own `mode` field) and leave the other slot alone, omp's OSC11-luminance auto dark/light detection can pick the *stale* slot and render an unrelated leftover theme. Fix: always set **both** `theme.dark` and `theme.light` to the same generated theme name (`"omarchy"`), unconditionally — don't branch on the palette's `mode` field for this. This makes the auto-detection irrelevant — either slot renders the current, correct palette.
+
 ```bash
-find / -name theme-schema.json 2>/dev/null   # ships inside the installed omp/pi-coding-agent package
-python3 -c "
-import json
-schema = json.load(open('<path>/theme-schema.json'))
-req = schema['properties']['colors']['required']
-data = json.load(open('~/.omp/agent/themes/omarchy.json'))
-print([k for k in req if k not in data['colors']])  # must print []
-"
+yq -i -y '.theme.dark = "omarchy" | .theme.light = "omarchy"' "$CONFIG_FILE"
 ```
 
-## Critical gotcha: `yq` on Arch is python-yq, not go-yq
+## Critical gotcha: `yq` variant on Arch/Omarchy
 
-`pacman -S yq` on Arch/Omarchy installs **kislyuk/python-yq** (a jq wrapper),
-version string like `yq 4.1.2 / jq-1.8.2` — NOT mikefarah/go-yq, despite the
-same binary name. Syntax differs:
+`/usr/bin/yq` on this system is **python-yq** (kislyuk/yq, a jq wrapper), version `4.1.2` (`jq-1.8.2` reported alongside it) — **not** mikefarah/go-yq. Its in-place-edit syntax differs:
 
-- **Wrong** (go-yq syntax, silently errors on python-yq):
-  `yq -i '.theme.dark = "omarchy"' file.yml`
-  → `yq: -i/--in-place can only be used with -y/-Y/-t/-T/-x`
-- **Correct** (python-yq): `yq -i -y '.theme.dark = "omarchy"' file.yml`
-  (`-y` = read+write YAML through the jq filter; `-i` = in-place)
+- **Wrong** (go-yq syntax, fails with `-i/--in-place can only be used with -y/-Y/-t/-T/-x`): `yq -i '.theme.dark = "omarchy"' file.yml`
+- **Right** (python-yq): `yq -i -y '.theme.dark = "omarchy"' file.yml` — the `-y` flag is required to round-trip YAML output; `-i` alone silently rejects.
 
-python-yq round-trips YAML through jq's JSON model, so formatting details
-shift on every edit (flow-style `{}` vs block style, quote style on strings
-like `'off'` vs `"off"`, trailing newline) — this is harmless noise, not a
-bug, when diffing before/after.
+python-yq's expression is real jq syntax (double-quote strings, `|` to pipe multiple assignments), unlike go-yq's own dialect. Round-tripping through jq/python also normalizes formatting (e.g. `{}` block-style vs `{}` flow-style, quote style, trailing newline) — harmless but shows up in diffs.
 
-## TS extension gotchas hit while building this
+## Verification approach (no live terminal needed)
 
-- Don't inline-cast a narrowed union result (`(result as {
-  success?: boolean }).success`) — write a real type guard function
-  (`function isFailedResult(value: unknown): value is {...}`) using
-  `typeof`/`"prop" in value` narrowing instead. A type guard is one of the
-  allowed exceptions to the "no tiny one-line functions" rule.
-- Editing a file with the `edit` tool using a `PUT n.=m:` range: get the
-  line numbers from a fresh `read` immediately before editing — reusing
-  stale line numbers after a previous partial edit silently corrupts the
-  file (duplicated/dangling code blocks) even though the tool reports the
-  edit as applied.
+1. `bash -n script.sh` for syntax.
+2. Run the script twice in a row to confirm idempotency.
+3. `python3 -m json.tool generated-theme.json` for JSON validity.
+4. Diff the generated JSON's `colors` keys against the real schema's `required` array (find `theme-schema.json` in an installed npm package) — confirms zero missing tokens without needing to launch omp interactively.
+5. A `omp -p "..."` smoke run can fail early on missing API keys before reaching `session_start`/extension load — that's expected in a sandboxed/unauthenticated environment and doesn't indicate an extension bug; check `~/.omp/logs/omp.<date>.<pid>.log` for actual extension load errors if the process gets far enough.
+6. Always back up and restore `~/.omp/agent/config.yml` around test runs that mutate the user's real `theme.dark`/`theme.light` settings — a verification pass should leave the user's actual configuration untouched unless they've asked for the change to stick.
