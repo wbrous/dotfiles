@@ -1,35 +1,51 @@
 ---
 name: qemu-anti-detection-vm-performance-tradeoffs
-description: "Use when the UndetectableVM (qemu-anti-detection patched QEMU + libvirt on Omarchy) feels laggy and the user wants more cores/RAM, a faster display, or asks whether virtio drivers can be renamed/rebranded to bypass detection. Covers why unaccelerated VGA is the lag source, the QXL-vs-VGA EDID tradeoff, and why renaming virtio drivers does NOT hide virtualization (PCI vendor 0x1AF4 is hardware-level)."
+description: "Use when the UndetectableVM (qemu-anti-detection patched QEMU + libvirt on Omarchy) feels laggy and the user wants more cores/RAM, a faster display, or asks whether virtio drivers can be renamed/rebranded to bypass detection. Covers why unaccelerated VGA is the lag source, the QXL-vs-VGA EDID tradeoff, why renaming virtio drivers does NOT hide virtualization (PCI vendor 0x1AF4 is hardware-level), and the concrete applied performance-boost recipe (16GiB/12 vCPU pinned/QXL) with exact XML."
 ---
 
-# VM Performance vs Anti-Detection Tradeoffs (UndetectableVM)
+# UndetectableVM performance: tradeoffs and the applied boost recipe
 
-Context: the qemu-anti-detection VM on this Omarchy host (see qemu-anti-detection-vm-device-ids). When the guest feels laggy, the bottleneck is almost always the DISPLAY, not cores/RAM. Keep this decision map in mind.
+Context: `UndetectableVM` = qemu-anti-detection patched QEMU 10.2.2 (`/usr/local/bin/qemu-system-x86_64`) + libvirt domain on Omarchy (AMD Ryzen AI 9 HX 370, 24 threads/30GiB).
 
-## Verified facts (from this setup)
+## The lag source: display, not cores/RAM
 
-- **Display is currently `VGA` (unaccelerated framebuffer)** — chosen so the patched EDID reports a Dell monitor ("DEL Monitor") instead of "Generic Non-PnP Monitor". Windows redraws over SPICE with no GPU accel → laggy feel regardless of vCPU/RAM.
-- **QXL (`qxl-vga`) cannot emit its own EDID** — it has NO `edid` property (rejects `-device qxl-vga,edid=on`). It relies on the SPICE client sending monitor EDID; virt-manager/virt-viewer often sends none → guest shows "Generic Non-PnP Monitor". QXL = smooth 2D, but generic monitor name.
-- **`VGA` and `virtio-vga` have `edid=<bool>` default ON** using the patched qemu-anti-detection EDID generator (defaults: vendor "DEL", name "DEL Monitor", model 0xA05F, prefx 1280).
-- **Virtio devices report PCI vendor `0x1AF4` (Red Hat)** in hardware — the single loudest VM tell in a PCI/firmware scan. This is in the device, NOT the driver.
-- **Renaming/recompiling a virtio driver with a custom name does NOT defeat detection**: detectors read PCI vendor/device IDs (1AF4), fw-cfg hints, and ACPI/DMI strings — not the driver filename or display name. A "rebranded" virtio-gpu/virtio-blk driver is cosmetically renamed but still 100% detectable. Compiling virtio from scratch with fake PCI IDs + a matching custom guest driver is a large fork (QEMU device IDs + guest driver) and out of scope.
-- Adding virtio (blk or gpu) REGRESSES the anti-detection posture of this build — 1AF4 undoes the whole hidden-hypervisor/realistic-device setup.
-- Host resources: AMD Ryzen AI 9 HX 370, 24 threads, 30 GiB RAM (~13 GiB available at the time).
+- Unaccelerated `VGA` (chosen for the Dell-EDID monitor name) redraws the whole desktop over SPICE → feels laggy regardless of allocation.
+- `qxl-vga` = accelerated 2D, smooth over SPICE, **but no built-in EDID** → Windows shows "Generic Non-PnP Monitor". Flip `model type` back to `vga` before sandbox tests that check the monitor name (cores/RAM/pinning stay).
+- `virtio-vga`/`virtio-blk` = fastest + EDID, but requires virtio-gpu/block guest drivers.
 
-## Recommended performance path (keep anti-detection posture)
+## Why rebranding virtio drivers does NOT work (user may ask)
 
-1. **Do NOT add virtio-blk or virtio-gpu** — 1AF4 PCI vendor is a detection tell no rename fixes.
-2. Bump resources: 12 vCPU (topology cores=6 threads=2 or cores=8) + 16 GiB RAM. Host has headroom.
-3. **vCPU pinning** (`virsh vcpupin` to physical cores) + raise QEMU nice level → less scheduler jitter, noticeably smoother, zero detection cost.
-4. SPICE tuning: `image compression=off` already set in domain XML.
-5. Keep SATA disk (realistic) and e1000/e1000e NIC (real Intel) — no virtio.
+- Virtio exposes PCI vendor `0x1AF4` (Red Hat) + device IDs at the **hardware level**; renaming the guest driver's INF/filename changes nothing a sandbox probe sees.
+- Changing IDs means forking QEMU device tables AND the Windows driver's PCI match tables AND driver-signing (test-signing = another tell), AND virtio capability structures remain a giveaway. Not a rename job, and defeats malware-analysis sandbox evasion is out of scope.
 
-## If the user accepts one VM-ish device for smoothness
+## Applied boost recipe (this machine, verified)
 
-- `qxl-vga` is the single biggest perf win, cost = "Generic Non-PnP Monitor" (Red Hat PCI vendor too). Flip back to `VGA` before sandbox-testing if the sample checks monitor names.
-- `virtio-vga` keeps EDID (named monitor) + smooth, but needs virtio-gpu guest driver in Windows (VM-specific driver) AND exposes 1AF4.
+Host topology: 24 CPUs (0-23), 1 socket, 12 physical cores × 2 threads, single NUMA node. Pin vCPUs to physical cores 0-11, emulator thread to CPU 12.
 
-## Ethics note
+XML deltas (rest of domain unchanged — keep all SMBIOS/CPU/hyperv/kvm-hidden/e1000/SATA config):
+- `<memory unit="KiB">16777216</memory>` + `<currentMemory>` (16 GiB)
+- `<vcpu placement="static">12</vcpu>`
+- `<cputune>` with `<vcpupin vcpu="0" cpuset="0"/>` … `vcpu="11" cpuset="11"` and `<emulatorpin cpuset="12"/>`
+- `<topology sockets="1" dies="1" cores="6" threads="2"/>` (was cores=4)
+- `<video><model type="qxl" ram="65536" vram="65536" vgamem="16384" heads="1" primary="yes"/></video>` (was vga)
 
-Renaming/rebranding drivers specifically to defeat sandbox/anti-cheat detection is out of scope. The legit use is malware analysis: getting samples to RUN by hiding QEMU device names/SMBIOS/hypervisor (the qemu-anti-detection patch) — not fabricating hardware identities to evade analysis tooling.
+Apply/verify sequence (sudo via tty — fingerprint-gated; user must scan):
+```
+virt-xml-validate <file>.xml
+virsh destroy UndetectableVM && virsh define <file>.xml && virsh start UndetectableVM
+virsh dumpxml UndetectableVM | grep -E "<memory |<vcpu |cpuset|<topology|<model type=|<video"
+# live proof:
+ps -eo args | grep qemu-system | grep -oE 'smp [0-9]+|"driver":"qxl-vga"'
+taskset -pc <qemu pid>   # emulator shows affinity 12
+ls /proc/<qemu pid>/task/ | wc -l   # ~21 threads (12 vCPU + overhead)
+```
+
+## Memory caution
+
+16 GiB to guest on a 30 GiB host leaves ~5.6 GiB available (some reclaimable buff/cache). Functional, but if the host swaps/feels slow, drop guest to 12 GiB (`12582912` KiB). 12 vCPU is fine on 24 threads.
+
+## Notes
+
+- Windows re-detects the new CPU/RAM/QXL adapter on next boot (QXL shows as "Microsoft Basic Display Adapter" until driver loads).
+- Chkdsk on first boot after an unclean destroy is normal — let it finish.
+- virtnetworkd (modular libvirt network daemon) must be enabled — see arch-libvirt-virtnetworkd-socket-missing if virt-manager shows "Failed to connect socket to '/var/run/libvirt/virtnetworkd-sock'".
