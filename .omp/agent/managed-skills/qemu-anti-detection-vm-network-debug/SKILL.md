@@ -1,76 +1,84 @@
 ---
 name: qemu-anti-detection-vm-network-debug
-description: "Diagnose a silent/unidentified NIC in the qemu-anti-detection UndetectableVM libvirt guest on this host: host-side verification (tap on virbr0, dnsmasq leases, tcpdump), guest-side triage (disable/enable, Device Manager), the e1000e→e1000 NIC-model swap fix with the stop/define/start procedure, and the definitive root cause — host ufw firewall dropping guest DHCP (UDP 67) on virbr0 — fixed with ufw allow/route rules plus a virsh detach/attach NIC bounce."
+description: "Diagnose a silent/unidentified NIC or dead DNS in the qemu-anti-detection UndetectableVM libvirt guest on this host: tcpdump/tap verification, ufw dropping guest DHCP, the e1000e→e1000 NIC-model swap, and the stale-DNS-after-network-churn NIC-bounce fix."
 ---
 
 # QEMU Anti-Detection VM Network Debug
 
-Use when the qemu-anti-detection `UndetectableVM` libvirt guest (Windows 10/11, e1000/e1000e NIC on the `default` NAT network) has no network: Windows shows "Unidentified network" / "Ethernet N doesn't have a valid IP configuration", or the NIC appears present but never gets an IP.
+Use when the UndetectableVM (qemu-anti-detection patched QEMU + libvirt on Omarchy) guest has NO network, an "unidentified network", "Ethernet N doesn't have a valid IP configuration", or "DNS address could not be found".
 
-## TL;DR — the actual root cause found on this host (2026-08-30)
+## Symptom triage: is the guest transmitting AT ALL?
 
-**The guest's DHCP requests were being dropped by the HOST's ufw firewall**, not by any driver/NIC problem. Omarchy runs ufw with `Default: deny (incoming), deny (routed)`, and there was no allow rule for DHCP (UDP 67) inbound on the libvirt bridge. dnsmasq never saw the requests → no OFFER → no lease → "no valid IP configuration" forever.
+The single most decisive test: capture on the bridge while the guest is idle-but-up.
 
-**The fix (persistent):**
+```bash
+sudo tcpdump -i virbr0 -nn -e   # 15-20s window
+```
+
+- **Zero frames from the guest MAC** → guest NIC is silent (link-down/disabled state in Windows, or driver issue).
+- **Guest sends DHCP DISCOVER but gets no OFFER** → host firewall (ufw) is dropping DHCP at INPUT.
+- **Guest resolves nothing and sends NO port-53 packets** → stale DNS state in Windows from network churn (see below).
+
+Also check, in order:
+```bash
+sudo virsh net-list --all                       # default active?
+ip -br addr show virbr0                          # UP with 192.168.122.1/24
+sudo virsh net-dhcp-leases default               # does the guest hold a lease?
+sudo bridge link show master virbr0              # vnet tap attached?
+sudo nft list table ip mitm_egress               # mitmproxy redirect only touches tcp 80/443 — NOT DNS
+```
+
+## Cause 1: host ufw firewall dropping guest DHCP (the big one)
+
+On this Omarchy host, **ufw's INPUT and FORWARD policies are `drop`**, and there is NO libvirt rule allowing guest DHCP (UDP 67) at INPUT. Symptom: guest transmits DHCP fine (visible on virbr0) but `default.leases` stays empty forever, and Windows shows "no valid IP configuration". The smoking gun is the ufw-before-input rule `udp dport 67 → ufw-skip-to-policy-input` with a rising drop counter.
+
+Fix (persistent ufw rules — survive reboot):
+
 ```bash
 sudo ufw allow in on virbr0
 sudo ufw allow out on virbr0
 sudo ufw route allow in on virbr0
 sudo ufw route allow out on virbr0
 ```
-(`ufw route allow` is required because the default routed/FORWARD policy is deny.)
 
-Then force the guest to re-run DHCP by bouncing the NIC (or just wait for Windows' periodic retry):
+Then bounce the guest NIC so Windows re-runs DHCP:
 ```bash
-sudo virsh detach-interface UndetectableVM network --config --live --mac f0:bc:8e:cd:6e:ec
-sudo virsh attach-interface UndetectableVM network default --model e1000 --mac f0:bc:8e:cd:6e:ec --live --config
+MAC="f0:bc:8e:cd:6e:ec"   # from `virsh domiflist UndetectableVM`
+sudo virsh detach-interface UndetectableVM network --config --live --mac "$MAC"
+sudo virsh attach-interface UndetectableVM network default --model e1000 --mac "$MAC" --live --config
+sudo virsh net-dhcp-leases default    # confirm a lease appears
 ```
 
-## Full diagnosis sequence
+## Cause 2: NIC model silently dead (e1000e)
 
-1. **Host-side verification** (do this first — it's fast and rules the host in/out):
-   ```bash
-   sudo virsh net-list --all                    # default should be active
-   sudo virsh net-dumpxml default               # NAT mode, virbr0, DHCP range
-   ip -br addr show virbr0                      # UP, 192.168.122.1/24
-   bridge link show master virbr0               # guest tap (vnetN) attached, state forwarding
-   sudo virsh net-dhcp-leases default           # EMPTY = guest never got a lease
-   sudo tcpdump -i virbr0 -nn -e                # watch for f0:bc:8e:cd:6e:ec frames
-   ```
-   The tap MAC shows as `fe:bc:8e:...` in `ip` output even though the domain MAC is `f0:bc:8e:...` — that's the bridge masking the locally-administered bit, normal.
-   `pgrep -af "dnsmasq.*default.conf"` showing TWO processes is normal (parent+child fork), not a conflict.
+If Windows shows the adapter present but it transmits NOTHING (zero frames on vnet tap, no warning icon in Device Manager), swap the NIC model — `e1000e` → `e1000` in the domain XML (`<model type='e1000'/>`), redefine, restart. e1000 (Intel 82540EM) is more bulletproof in Windows under the hidden-hypervisor setup. The `e1000` model then presents as "Intel(R) PRO/1000 MT Desktop Adapter" and transmits normally.
 
-2. **Interpretation of captures:**
-   - **Zero frames from the guest MAC on virbr0/vnetN** (only STP BPDUs every ~2s) → guest NIC is silent → guest-side problem (adapter disabled, driver not bound, or cable state).
-   - **Guest sends DHCP DISCOVER/REQUEST (0.0.0.0.68 → 255.255.255.255.67) but no OFFER ever comes back** → host-side problem: dnsmasq not receiving (firewall) or not replying. THIS was the real case here.
-   - Guest with link-local 169.254.x.x + IGMP/SSDP chatter = adapter works, DHCP failing.
+## Cause 3: stale guest DNS after libvirt network churn
 
-3. **Firewall check (the decisive one):**
-   ```bash
-   nft list table ip libvirt_network        # libvirt's own chains (guest_input/guest_output/guest_nat)
-   nft -a list chain ip filter INPUT        # look for: udp dport 67 ... jump ufw-skip-to-policy-input
-   ufw status verbose
-   ```
-   If INPUT policy is `drop` and DHCP port 67 traffic jumps to ufw's skip-to-policy, requests never reach dnsmasq. The `udp sport 67 udp dport 68 accept` rule is only for the REPLY direction; the REQUEST (dport 67) needs an explicit allow.
+Symptom: browser says "DNS address could not be found" AFTER the `default` network was destroyed/redefined (e.g. during egress/mitmproxy setup). The guest stops sending ANY DNS queries — tcpdump on virbr0 shows **0 packets on udp port 53** even though the NIC is up with a fresh lease. dnsmasq itself is fine (verify from host with a python UDP query to 192.168.122.1:53, since `dig`/`nslookup` are often not installed).
 
-4. **Guest-side triage** (if host is confirmed clean): in Windows — `ncpa.cpl` → Disable/Enable the adapter; Device Manager → Network adapters → check for yellow bang / "Code 10" (driver truly missing/broken); check "Jumbo Packet" / "Interrupt Moderation" advanced settings if silent.
+Fix: bounce the guest NIC (same detach/attach as Cause 1) — forces Windows to re-DHCP and re-apply its DNS server. Verified: after bounce the guest resolves normally (capture shows healthy query/answer pairs).
 
-## NIC model swap (e1000e → e1000) — if still needed
-
-Windows 10 bundles drivers for both. e1000e presents as Intel 82574L, e1000 as Intel PRO/1000 MT (82540EM). Swap only as a robustness measure; it does NOT fix firewall-blocked DHCP (it just makes the adapter re-enumerate as a new device, which sometimes makes Windows retry DHCP).
+## Host-side resolution sanity checks (no dig/nslookup installed)
 
 ```bash
-# edit /tmp/vm-anti-detect/undetectable-vm-win10.xml: <model type="e1000e"/> → <model type="e1000"/>
-virt-xml-validate /tmp/vm-anti-detect/undetectable-vm-win10.xml   # ALWAYS validate — virsh define silently drops invalid devices
-sudo virsh destroy UndetectableVM
-sudo virsh define /tmp/vm-anti-detect/undetectable-vm-win10.xml
-sudo virsh start UndetectableVM
+getent hosts example.com                     # host resolves?
+ping -c1 -W2 1.1.1.1                          # upstream reachable?
+python3 - <<'EOF'                             # query dnsmasq on virbr0 directly
+import socket, struct, random
+tid = random.randint(0,0xffff)
+q = struct.pack('>HHHHHH', tid, 0x0100, 1, 0, 0, 0)
+for part in 'example.com'.split('.'): q += bytes([len(part)]) + part.encode()
+q += b'\x00' + struct.pack('>HH', 1, 1)
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(4)
+s.sendto(q, ('192.168.122.1', 53)); d,_ = s.recvfrom(512)
+print('answers:', struct.unpack('>H', d[6:8])[0])
+EOF
 ```
 
-## Gotchas learned the hard way
+## Guest-side notes
 
-- **`virsh define` silently discards schema-invalid devices.** The guide's original XML placed `<controller>` outside `<devices>` → disks/interface vanished from the domain with no error. Always `virt-xml-validate` first, and verify with `virsh dumpxml | grep -E '<disk|<interface'` after define.
-- **sudo is fingerprint-gated on this host** (Omarchy polkit). Run sudo through an interactive PTY (hub session); the "Place your right index finger" prompt is a real GUI polkit dialog the user must scan for. Chain all sudo commands into ONE invocation to minimize auth prompts; the first sudo in a session always prompts.
-- **VM files live in /var/lib/libvirt/images/** (disk.img raw sparse, Win10 ISO) — NOT /tmp (tmpfs, wiped on reboot, and /home/wils is 700 so libvirt-qemu can't traverse it).
-- After `virsh net-destroy default` + `net-start`, virbr0 may show NO-CARRIER and the guest goes quiet — bounce the NIC (detach/attach above) to force Windows to renegotiate.
-- Confirm success with `virsh net-dhcp-leases default` — the guest should appear as e.g. `192.168.122.194/24` with hostname DESKTOP-xxxx.
+- `sudo -n virsh` from the user shell fails ("a password is required") — the libvirt group membership requires re-login; use `sudo virsh` via an interactive tty instead.
+- Every sudo on this Omarchy box is fingerprint-gated (polkit) — the prompt appears on the desktop; commands wait at "Place your right index finger on the fingerprint reader" until scanned.
+- virbr0 shows DOWN (no carrier) when the guest is off; it comes UP when the guest NIC attaches — not a fault.
+- After `virsh net-destroy`/`net-start`, the guest tap is recreated with a new vnet index; the domain's interface re-attaches automatically but Windows may need the NIC bounce to re-sync DHCP/DNS.
