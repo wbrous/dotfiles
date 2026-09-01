@@ -1,11 +1,11 @@
 ---
 name: google-voice-web-api-reverse-engineering
-description: "Use when reverse-engineering Google Voice's internal web API (sendsms, api2thread/list, attachments, WAA/BotGuard attestation, SAPISIDHASH auth) or debugging cookie expiry/401s / multi-browser session reading (Firefox, Zen, Chrome, Brave, Vivaldi, Opera, Edge, Safari via cookies.sqlite or @mherod/get-cookie) in a client that replays a browser session."
+description: "Use when reverse-engineering Google Voice's internal web API (sendsms, api2thread/list, attachments, WAA/BotGuard attestation, SAPISIDHASH auth, session cookie renewal) or debugging cookie expiry/401s in a client that replays a browser session."
 ---
 
 # Google Voice web API reverse-engineering
 
-Reverse-engineered from Firefox/Zen HAR captures of voice.google.com (2026-08-31), then validated live. Project: `/home/wils/Documents/Development/google-voice-ws` (bun library).
+Reverse-engineered from Firefox/Zen HAR captures of voice.google.com (2026-08-31), then validated live. Project: `/home/wils/Documents/Development/google-voice-client` (bun library).
 
 ## Endpoints (all `POST https://clients6.google.com/voice/v1/voiceclient/...?alt=protojson&key=AIzaSy<voiceApiKey>` — the `key` param is a public browser-shipped constant; grab the exact value from any live capture's query string, don't paste one here)
 
@@ -47,6 +47,11 @@ Field order is `ts SPACE sapisid SPACE origin` (getting this wrong = 401). ts = 
 - Persistent profile is single-account → `X-Goog-AuthUser: 0` (a `1` from a multi-account browser jar 401s in it). CLI persists `GV_AUTH_USER=0` on browser refresh.
 - After login success, a headless recurring refresh takes ~5s and produces a live-valid cookie (cron-able).
 - Optional peers `playwright` + `@mherod/get-cookie` are BOTH externalized in `bun build` and marked optional in `peerDependenciesMeta`, so consumers not using those paths ship a 0.26 MB bundle.
+
+## Sending to a phone number without listing threads
+
+- Thread ids are deterministic: `t.+{E.164 phone}` (e.g. `BRIDGE_PHONE=+14697590653` → `t.+14697590653`). To send to a phone, construct the thread id directly — no `listThreads()` needed.
+- This is what the Discord bridge (`examples/discord-bridge/`) relies on for Discord→phone sends.
 
 ## HAR capture notes
 
