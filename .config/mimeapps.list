@@ -61,6 +61,7 @@ x-scheme-handler/claude-cli=claude-code-url-handler.desktop
 x-scheme-handler/jetbrains=jetbrainsd.desktop
 text/markdown=omawrite.desktop
 x-scheme-handler/figma=figma-linux.desktop
+text/csv=omawrite.desktop
 
 [Added Associations]
 x-scheme-handler/http=zen.desktop;
@@ -68,3 +69,4 @@ x-scheme-handler/https=zen.desktop;
 x-scheme-handler/chrome=zen.desktop;
 text/html=zen.desktop;
 text/markdown=omawrite.desktop;
+text/csv=omawrite.desktop;

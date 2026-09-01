@@ -1,4 +1,5 @@
 [tools]
+bun = "1.3.14"
 claude = "latest"
 codex = "latest"
 gh = "latest"
