@@ -1,6 +1,6 @@
 ---
 name: google-voice-web-api-reverse-engineering
-description: "Use when reverse-engineering Google Voice's internal web API (sendsms, api2thread/list, attachments, WAA/BotGuard attestation, SAPISIDHASH auth, session cookie renewal via cookies.sqlite or Playwright) or debugging cookie expiry/401s in a client that replays a browser session."
+description: "Use when reverse-engineering Google Voice's internal web API (sendsms, api2thread/list, attachments, WAA/BotGuard attestation, SAPISIDHASH auth) or debugging cookie expiry/401s / multi-browser session reading (Firefox, Zen, Chrome, Brave, Vivaldi, Opera, Edge, Safari via cookies.sqlite or @mherod/get-cookie) in a client that replays a browser session."
 ---
 
 # Google Voice web API reverse-engineering
@@ -32,10 +32,21 @@ Field order is `ts SPACE sapisid SPACE origin` (getting this wrong = 401). ts = 
 - Browsers renew via `POST https://accounts.google.com/RotateCookies` body `[72,"<numericToken>"]` — but the token is minted by page JS; CANNOT be reproduced with plain HTTP.
 - **App passwords do NOT work** — legacy protocols only (IMAP/SMTP/CalDAV), no relationship to web session cookies.
 - **No OAuth path** for consumer Voice SMS.
-- Reading the browser's own `cookies.sqlite` (Firefox/Zen/LibreWolf, `moz_cookies` table) CAN work: copy `cookies.sqlite{,-wal,-shm}` to a temp dir first (the live browser may hold an exclusive lock), query `host LIKE '%google.com'`. Multi-account lives in the hidden `originAttributes` column (`''` = default, `^userContextId=2` = container tab); anchor on the `SID` value from the existing .env.
-- **Caveat (hit on this machine)**: Zen with a temporary/container tab kept today's SIDCC rotations in memory — the on-disk jar was 36 days stale and 401'd. Solution: verify against the live API before trusting the jar; fall back to a persistent Playwright chromium profile.
-- **Google blocks automated chromium LOGIN** ("Couldn't sign you in — this browser or app may not be secure"). Mitigations that worked: launch args `--disable-blink-features=AutomationControlled --no-first-run --no-default-browser-check`, init script hiding `navigator.webdriver`, and a real (non-HeadlessChrome) Chrome UA. The persistent profile stays logged in; later runs are headless. The Playwright profile is single-account → `X-Goog-AuthUser: 0` (a `1` from a multi-account browser jar 401s in it).
-- Library shape: `readFirefoxSession()` (sqlite), `refreshCookies()` (playwright; optional peer dep, structural local types so consumers without it stay type-safe; bun build `--external playwright`), CLI `bun run refresh-cookies` (auto = jar → verify → browser fallback; verified ~5s headless recurring run).
+
+### Multi-browser session reading
+
+- **Firefox-family** (Firefox, Zen, LibreWolf, Waterfox): unencrypted `cookies.sqlite` — copy `cookies.sqlite{,-wal,-shm}` to a temp dir first (live browser may hold an exclusive lock), query `host LIKE '%google.com'`. Multi-account lives in the hidden `originAttributes` column (`''` = default, `^userContextId=2` = container tab); anchor on the `SID` value from the existing .env. Zero deps.
+- **Chromium-family** (Chrome, Chromium, Edge, Brave, Opera, Opera GX, Vivaldi, Arc) + **Safari**: cookies AES-GCM-encrypted behind an OS-keyring/DPAPI/Keychain key, or Safari binary format — DON'T hand-roll decryption for 3 OSes. Use the optional peer `@mherod/get-cookie` (`ChromiumCookieQueryStrategy(browserType)` / `SafariCookieQueryStrategy().queryCookies("%","google.com")`). It handles Linux Secret Service / macOS Keychain / Windows DPAPI.
+- **Caveat (hit on this machine)**: Zen with a temporary/container tab kept today's SIDCC rotations in memory — the on-disk jar was 36 days stale and 401'd. Solution: verify against the live API before trusting the jar; fall back to a persistent Playwright chromium profile. Auto flow does exactly this.
+- Library: `readBrowserSession(browser?)` (unified), `detectBrowsers()`, `readFirefoxSession()` (sqlite-only). CLI `bun run refresh-cookies --browser <name>`; auto path = any-browser jar → live verify → playwright fallback.
+
+### Playwright login flow (headless automation)
+
+- **Google blocks automated chromium LOGIN** ("Couldn't sign you in — this browser or app may not be secure"). Mitigations that worked: launch args `--disable-blink-features=AutomationControlled --no-first-run --no-default-browser-check`, init script hiding `navigator.webdriver`, and a real (non-HeadlessChrome) Chrome UA.
+- **headless default trap**: Playwright's persistent context auto-turns headless when the profile dir exists. If the first run created `.gv-browser-profile/` but you still want a visible window, pass `--no-headless` and `rm -rf .gv-browser-profile` first.
+- Persistent profile is single-account → `X-Goog-AuthUser: 0` (a `1` from a multi-account browser jar 401s in it). CLI persists `GV_AUTH_USER=0` on browser refresh.
+- After login success, a headless recurring refresh takes ~5s and produces a live-valid cookie (cron-able).
+- Optional peers `playwright` + `@mherod/get-cookie` are BOTH externalized in `bun build` and marked optional in `peerDependenciesMeta`, so consumers not using those paths ship a 0.26 MB bundle.
 
 ## HAR capture notes
 
