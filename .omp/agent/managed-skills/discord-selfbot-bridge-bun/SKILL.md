@@ -1,43 +1,43 @@
 ---
 name: discord-selfbot-bridge-bun
-description: "Use when working on the google-voice-ws Discord selfbot bridge (examples/discord-bridge): the youtsuho-v13 library choice and string event names, the self-loop guard, ToS/ban risk, WAA/reCAPTCHA capture, lenient E.164 phone matching, and both-direction attachment forwarding."
+description: "Use when working on the google-voice-ws Discord selfbot bridge (examples/discord-bridge/): the youtsuho-v13 selfbot fork's getUploadURL file_size bug, lenient phone matching, self-loop guard, WAA/reCAPTCHA token capture, and bun link/lockfile gotchas."
 ---
 
-# Discord selfbot bridge (examples/discord-bridge)
+# discord-selfbot-bridge-bun
 
-Bridges one Google Voice phone number with one Discord DM using a **selfbot** (user-token login, ToS risk — Discord bans selfbots; keep on a throwaway account). Runs under Bun.
+Working notes for the Discord selfbot bridge in `examples/discord-bridge/` (this repo's bridge between one Google Voice phone number and one Discord DM, running as the user's own Discord account).
 
-## Library & API
+## Architecture
 
-- **Library**: `discord.js-selfbot-youtsuho-v13` (v3.7.7) — the maintained fork of the archived `discord.js-selfbot-v13`. Node 20.18+ required. Stock discord.js v14 refuses user tokens.
-- **No `Events` enum**: use string event names — `client.on("ready")`, `client.on("messageCreate")`. `client.user` is the selfbot's own user.
-- **Install gotcha**: `bun add` may hang/stall resolving the big discord.js transitive tree; the lockfile can silently omit the dep even when node_modules has it. Fix: delete bun.lock and reinstall, or pin the exact version.
-- **Local lib link**: bridge depends on `google-voice-client` via `link:google-voice-client` (register with `bun link` in the repo root first). `file:../..` copies but omits the gitignored `dist/`, so `link:` is required for the built package. Rebuild the parent (`bun run build`) after library changes.
+- `index.ts`: selfbot via `discord.js-selfbot-youtsuho-v13` (the active fork of the archived `discord.js-selfbot-v13`). String event names ("ready"/"messageCreate"), NOT the v14 `Events` enum. `google-voice-client` is linked via `bun link` (not `file:` — the `file:` protocol stages gitignored `dist/` and the link breaks).
+- Two directions:
+  - Voice → Discord: `voice.on("messageCreate")` → filter `RECEIVED` + phone match → `dm.send` (text or `files:[{attachment: Buffer, name}]`).
+  - Discord → Voice: `discord.on("messageCreate")` → ignore self (`author.id === discord.user?.id`, otherwise it loops), require `BRIDGE_DM_USER_ID`, DM/GROUP channel only → `voice.sendMessage(threadId, text, tmpId, { tokens, attachment })`.
+- `bin/capture-send-tokens.ts`: captures fresh WAA/BotGuard + reCAPTCHA tokens for outbound sends by intercepting a real `api2thread/sendsms` request (body[10] = `[attestation, null, null, recaptcha]`) in a Playwright browser window, then writes `GV_SEND_ATTESTATION_TOKEN`/`GV_SEND_RECAPTCHA_TOKEN` to `.env`.
+- `DEBUG=1` env enables verbose logging of every event + filter decision.
 
-## Self-loop guard (critical)
+## Gotchas (all hit in real sessions)
 
-The selfbot's OWN messages fire `messageCreate` (including its own voice-forwards). MUST ignore `message.author.id === discord.user?.id` before any forwarding, or the bridge echoes every forward back to the phone forever.
+### 1. Selfbot fork `getUploadURL` file_size bug (attachment forward fails)
+Voice→Discord attachment sends fail with `files[0].file_size: int value should be greater than or equal to 1`. Root cause: the fork's `Util.getUploadURL` (src/util/Util.js) computes `file_size: file.byteLength ?? file.size ?? 0` from the **MessagePayload wrapper**, but the actual bytes are at `wrapper.file` — so it always sends `file_size: 0`. Fix: rebind `Util.getUploadURL` via CJS `require` (an ESM `import * as` namespace is frozen and can't be rebound) to stamp `byteLength` from `f.file?.byteLength` before delegating to the original. Import path is `discord.js-selfbot-youtsuho-v13/src/util/Util` (not `lib/`); no `.d.ts` exists there — the bridge declares the module shape inline on the require cast. The bridge's `index.ts` has the exact patch.
 
-## Phone matching (E.164 trap — cost a debug cycle)
+### 2. Phone matching: E.164 vs national format
+Voice returns `+14697590653` (E.164 with country code), but `BRIDGE_PHONE` in `.env` is often `4697590653` (national, no `+`). Strict `!==` drops every message (visible in DEBUG as `otherParty` vs `wantParty`). Fix: compare on digits with suffix matching (`a.endsWith(b) || b.endsWith(a)`) — tolerates missing `+`, country-code differences, spacing. `threadId` is `t.+<digits>` (strip the `+` before building it or you get `t.++…`).
 
-Google Voice returns numbers in E.164 (`+14697590653`, with country code), while `BRIDGE_PHONE` in .env may be national form (`4697590653`, no `+`, no `1`). A strict `!==` comparison silently drops EVERY message — symptom: "sent through Voice but not relayed to Discord."
+### 3. Selfbot loop guard
+The selfbot's OWN forwarded messages fire `messageCreate` too. Must ignore `author.id === discord.user?.id` before anything else, or the bridge echoes every forward back into the phone.
 
-Fix (in bridge): normalize to digits and match on suffix:
-- `toE164(raw)` = `"+" + raw.replace(/\D/g, "")`
-- `numbersMatch(have, want)` = compare digits-only, match if `a === b || a.endsWith(b) || b.endsWith(a)`
-- `threadId = "t.+" + digits` (strip the `+` from the normalized number first, else `t.++...`)
+### 4. Selfbot ToS risk
+Using a user token is a Discord ToS violation → account deactivation. The skill/bridge flags this; never present it as risk-free, always recommend a throwaway account.
 
-Debug with `DEBUG=1` in the bridge .env — logs every event with `otherParty` vs `wantParty`, direction, attachment presence, and each filter rejection reason.
+### 5. Outbound sends need live tokens
+`sendsms` 401s without `[attestationToken, null, null, recaptchaToken]`. They're minted by Google's page JS, session-recent, NOT bound to message text. Can't be fabricated; re-capture with `capture-send-tokens` (user must send a real text in the browser window).
 
-## Outbound sends: WAA/reCAPTCHA tokens
+### 6. `bun install` lockfile stalls in this example dir
+Fresh lockfile regeneration (`rm bun.lock && bun install`) resolved repeated "Resolved, downloaded and extracted [0]" hangs when adding the selfbot fork.
 
-Discord→phone sends need the anti-abuse tokens Google mints (WAA/BotGuard attestation + reCAPTCHA), session-recent and short-lived; the SDK cannot fabricate them. Capture a fresh pair with `bun run capture-tokens` (opens a real Chromium window; send ANY text to any number; the helper intercepts the `sendsms` request and writes `GV_SEND_ATTESTATION_TOKEN`/`GV_SEND_RECAPTCHA_TOKEN` to .env). Without them, inbound still works but outbound is skipped.
+## Verification shortcuts
 
-## Attachments (both directions now)
-
-- **Voice → Discord**: `voice.on("messageCreate")` → `voice.downloadAttachment(id)` → `dm.send({ files: [{ attachment: Buffer.from(data), name }] })`.
-- **Discord → Voice**: first `message.attachments` item (Collection) → `fetchDiscordAttachment(url, contentType)` (plain fetch of the CDN url) → pass as `sendMessage(threadId, text, tmpId, { attachment: { data, mimeType }, tokens })`. Attachment-only DMs (no text) must NOT be skipped when a photo is present.
-
-## Env (bridge .env)
-
-`GV_*` session vars (from repo root .env), `DISCORD_TOKEN` (user token), `BRIDGE_DM_USER_ID`, `BRIDGE_PHONE` (lenient format ok now), `GV_SEND_ATTESTATION_TOKEN`/`GV_SEND_RECAPTCHA_TOKEN` (optional), `DEBUG=1` (verbose event/filter logging).
+- Reproduce the fork's wrapper shape: `MessagePayload.resolveFile({attachment: Buffer.from("x"), name})` → `{ file: Buffer, name, ... }` with NO top-level `byteLength`.
+- Sanity check numbersMatch with the exact failing pair: `+14697590653` vs `4697590653` must MATCH; a truly different number must not.
+- Parent suite must stay 44/44 + typecheck + build after bridge changes.
