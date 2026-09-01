@@ -45,3 +45,7 @@ Field order is `ts SPACE sapisid SPACE origin` (getting this wrong = 401). ts = 
 ## Auth flow for real sends
 
 401 without tokens; 200 with captured `[botguardToken, null, null, recaptchaToken]` replay. Token reuse window is short (session-bound); regenerate via the browser refresh flow or re-capture.
+
+## Skill hygiene: gitleaks blocks on public API keys
+
+The global gitleaks pre-commit hook flags `AIzaSy…` strings as `gcp-api-key` and blocks the dotfiles autosync commit for any skill that pastes them. These keys are public (shipped in every browser client), but do NOT bypass with `GIT_ALLOW_SECRETS=1` — instead scrub real key values from the skill body to `AIzaSy<name>` placeholders with a "read from a live capture" note, then recommit manually via `git --git-dir=$HOME/.dotfiles --work-tree=$HOME add -- .omp/agent/managed-skills/<name>/SKILL.md && git ... commit -m "..."`. Applies to any API-documenting skill, not just this one.
