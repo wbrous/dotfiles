@@ -1,75 +1,45 @@
 ---
 name: discord-selfbot-bridge-bun
-description: "Use when working on the Discord selfbot bridge in google-voice-client (examples/discord-bridge/) or building any Discord user-account (selfbot) integration in Bun/TypeScript — covers the working library choice, the event-name and self-loop gotchas, the bun link dependency trap, and the ToS/account-ban risk."
+description: "Use when working on the google-voice-ws Discord selfbot bridge example (examples/discord-bridge): the youtsuho-v13 library choice and string event names, the self-loop guard, ToS/ban risk, live-capture of WAA/reCAPTCHA send tokens via capture-tokens, and the bun link/env gotchas."
 ---
 
-# Discord selfbot bridge (Bun/TS)
+# Discord selfbot bridge (Bun)
 
-Covers `examples/discord-bridge/` in google-voice-client: bridges one Google
-Voice phone number with one Discord DM by logging in as YOUR OWN user account.
+Project: `/home/wils/Documents/Development/google-voice-ws/examples/discord-bridge` — bridges one Google Voice phone number with one Discord DM by logging into Discord as a **user account** (selfbot). Two directions: phone→Discord (via the GV client's event loop) and Discord→phone (via `sendMessage`).
 
-## ⚠️ Risk — read first
+## Library choice (critical)
 
-Selfbots (user-token automation) violate Discord ToS. Discord **deactivates
-accounts** detected doing this — not a warning, not a gray area. The library's
-own README banner says the same. If the user wants a selfbot, implement it but
-flag this risk in code comments + README + commit message, and recommend a
-throwaway account. The bridge targets only the account owner's own DM, so it
-harms no third party, but account loss is the realistic outcome.
+Stock `discord.js` v14 **refuses user tokens**. Use the active fork of the archived selfbot lib:
 
-## Library choice
+- `discord.js-selfbot-youtsuho-v13@3.7.7` — maintained continuation of the archived `discord.js-selfbot-v13` (discord.js v13 base, API v9). CJS main (`./src/index.js`) but works under Bun.
+- **No `Events` enum export** — use string event names: `client.on("ready", ...)`, `client.on("messageCreate", ...)`.
+- `client.user` is a `ClientUser`; `client.login(token)` takes the user token.
+- Prints its own banner on import — harmless.
 
-- Stock `discord.js` v14 **refuses user tokens** — it validates and the
-  gateway rejects them. Do not try to force it.
-- Use `discord.js-selfbot-youtsuho-v13` (npm, v3.7.7) — the actively
-  maintained fork of `discord.js-selfbot-v13` (archived Oct 2025). Same
-  discord.js v13-style API (`new Client()`, `client.login(token)`).
-- CommonJS main (`./src/index.js`) — works under Bun.
+## Self-loop guard (critical)
 
-## Gotchas that actually bit
+The selfbot's OWN messages (including its voice-forwards) fire `messageCreate`. Always filter `if (message.author.id === discord.user?.id) return;` before forwarding, else every forward echoes back to the phone forever.
 
-1. **No `Events` enum.** The fork is v13-based; `Events` is NOT exported.
-   Use string literals: `client.once("ready", ...)`, `client.on("messageCreate", ...)`.
-   Importing `{ Events }` fails typecheck with TS2305.
-2. **Self-echo loop.** The selfbot's own messages fire `messageCreate` — when
-   it forwards a Voice message into the DM, that fires too. MUST filter:
-   `if (message.author.id === discord.user?.id) return;` before any bridge
-   logic, else every forward echoes back to the phone in a loop.
-3. **`file:` deps and gitignored dist.** In this repo the bridge used
-   `"google-voice-client": "file:../.."`, but Bun's `file:` protocol copies
-   the package WITHOUT gitignored `dist/`, so the linked package had no
-   `dist/` → `Cannot find module` type errors and runtime import failures.
-   Fix: `bun link` in the parent repo root, then use
-   `"google-voice-client": "link:google-voice-client"` in the bridge — the
-   symlink keeps `dist/` visible and rebuilds propagate.
-4. **Slow/corrupted bun installs.** `bun add` on a package with a large
-   transitive tree (discord.js family) can hang at "Resolved, downloaded and
-   extracted [0]" and leave the package out of the lockfile even when
-   `node_modules` looks complete. Fix: delete `bun.lock`, rerun `bun install`
-   (regenerates the lock cleanly and fast), verify with
-   `grep -c "<pkg>" bun.lock`.
+## ToS / ban risk (must flag honestly)
 
-## Bridge wiring (index.ts)
+Selfbots violate Discord ToS; Discord deactivates accounts detected doing this. Not a gray area. README + code flag it; run on a throwaway account if at all possible.
 
-- Config from env, validated BEFORE any network connect (fail fast):
-  `DISCORD_TOKEN` (user token), `BRIDGE_DM_USER_ID`, `BRIDGE_PHONE` (E.164),
-  `GV_SEND_ATTESTATION_TOKEN`/`GV_SEND_RECAPTCHA_TOKEN` (optional).
-- Voice → Discord: `voice.on("messageCreate")`, filter `direction ===
-  "RECEIVED"` && `otherPartyNumber === BRIDGE_PHONE`, then `users.fetch(dmUserId)`
-  → `createDM()` → `dm.send(...)` (attachments via `downloadAttachment` +
-  `files: [{ attachment: Buffer.from(data), name }]`).
-- Discord → Voice: `discord.on("messageCreate")`, filter self + bridged user,
-  then `voice.sendMessage(threadId, text, tmpId, { tokens })`. Thread id is
-  `t.+${phone}`. Strip a leading `<@mention>` quote from replies.
-- Outbound sends 401 without the WAA/reCAPTCHA tokens (SDK can't mint them);
-  without them, log that outbound is disabled and keep forwarding inbound.
-- Run: `bun --env-file=.env run index.ts`; `SIGINT` stops the voice loop +
-  `discord.destroy()`.
+## Outbound sends need live-captured anti-abuse tokens
 
-## Verification without a live account
+`sendMessage` 401s without WAA/BotGuard + reCAPTCHA tokens that Google mints by running obfuscated JS in a real page. The GV SDK cannot fabricate them; they're short-lived. Mechanism in this repo:
 
-- `bun x tsc --noEmit` in the bridge dir (needs its own tsconfig + @types/bun).
-- A no-env run must fail fast: `bun run index.ts` → throws
-  `Missing required environment variable "GV_COOKIE"` before any connection —
-  proves import graph + config validation. Do NOT test against a real user
-  token.
+```bash
+bun run capture-tokens   # bin/capture-send-tokens.ts in the bridge dir
+```
+
+- Launches persistent Chromium profile at voice.google.com/messages, hooks the network layer, and extracts `body[10]` (the `[attestationToken, null, null, recaptchaToken]` array) from the next `api2thread/sendsms` request.
+- **Requires a real send**: you must actually send a text in the browser window for the tokens to be minted/intercepted.
+- Writes `GV_SEND_ATTESTATION_TOKEN` / `GV_SEND_RECAPTCHA_TOKEN` into the bridge `.env`.
+- Fails fast if `DISCORD_TOKEN` isn't set.
+
+## Env + linking gotchas
+
+- `start` runs `bun --env-file=.env run index.ts`; `capture-tokens` uses its own `.env` too.
+- `google-voice-client` is a local dep via `link:google-voice-client` — register once with `bun link` at the repo root before `bun install` in the bridge.
+- Bridge `.env` is gitignored by the root `.env` pattern; it carries `DISCORD_TOKEN`, `BRIDGE_DM_USER_ID`, `BRIDGE_PHONE` (E.164), GV session vars, and the `GV_SEND_*` tokens.
+- Discord user id: Developer Mode → copy user id.
