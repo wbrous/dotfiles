@@ -1,45 +1,43 @@
 ---
 name: discord-selfbot-bridge-bun
-description: "Use when working on the google-voice-ws Discord selfbot bridge example (examples/discord-bridge): the youtsuho-v13 library choice and string event names, the self-loop guard, ToS/ban risk, live-capture of WAA/reCAPTCHA send tokens via capture-tokens, and the bun link/env gotchas."
+description: "Use when working on the google-voice-ws Discord selfbot bridge (examples/discord-bridge): the youtsuho-v13 library choice and string event names, the self-loop guard, ToS/ban risk, WAA/reCAPTCHA capture, lenient E.164 phone matching, and both-direction attachment forwarding."
 ---
 
-# Discord selfbot bridge (Bun)
+# Discord selfbot bridge (examples/discord-bridge)
 
-Project: `/home/wils/Documents/Development/google-voice-ws/examples/discord-bridge` — bridges one Google Voice phone number with one Discord DM by logging into Discord as a **user account** (selfbot). Two directions: phone→Discord (via the GV client's event loop) and Discord→phone (via `sendMessage`).
+Bridges one Google Voice phone number with one Discord DM using a **selfbot** (user-token login, ToS risk — Discord bans selfbots; keep on a throwaway account). Runs under Bun.
 
-## Library choice (critical)
+## Library & API
 
-Stock `discord.js` v14 **refuses user tokens**. Use the active fork of the archived selfbot lib:
-
-- `discord.js-selfbot-youtsuho-v13@3.7.7` — maintained continuation of the archived `discord.js-selfbot-v13` (discord.js v13 base, API v9). CJS main (`./src/index.js`) but works under Bun.
-- **No `Events` enum export** — use string event names: `client.on("ready", ...)`, `client.on("messageCreate", ...)`.
-- `client.user` is a `ClientUser`; `client.login(token)` takes the user token.
-- Prints its own banner on import — harmless.
+- **Library**: `discord.js-selfbot-youtsuho-v13` (v3.7.7) — the maintained fork of the archived `discord.js-selfbot-v13`. Node 20.18+ required. Stock discord.js v14 refuses user tokens.
+- **No `Events` enum**: use string event names — `client.on("ready")`, `client.on("messageCreate")`. `client.user` is the selfbot's own user.
+- **Install gotcha**: `bun add` may hang/stall resolving the big discord.js transitive tree; the lockfile can silently omit the dep even when node_modules has it. Fix: delete bun.lock and reinstall, or pin the exact version.
+- **Local lib link**: bridge depends on `google-voice-client` via `link:google-voice-client` (register with `bun link` in the repo root first). `file:../..` copies but omits the gitignored `dist/`, so `link:` is required for the built package. Rebuild the parent (`bun run build`) after library changes.
 
 ## Self-loop guard (critical)
 
-The selfbot's OWN messages (including its voice-forwards) fire `messageCreate`. Always filter `if (message.author.id === discord.user?.id) return;` before forwarding, else every forward echoes back to the phone forever.
+The selfbot's OWN messages fire `messageCreate` (including its own voice-forwards). MUST ignore `message.author.id === discord.user?.id` before any forwarding, or the bridge echoes every forward back to the phone forever.
 
-## ToS / ban risk (must flag honestly)
+## Phone matching (E.164 trap — cost a debug cycle)
 
-Selfbots violate Discord ToS; Discord deactivates accounts detected doing this. Not a gray area. README + code flag it; run on a throwaway account if at all possible.
+Google Voice returns numbers in E.164 (`+14697590653`, with country code), while `BRIDGE_PHONE` in .env may be national form (`4697590653`, no `+`, no `1`). A strict `!==` comparison silently drops EVERY message — symptom: "sent through Voice but not relayed to Discord."
 
-## Outbound sends need live-captured anti-abuse tokens
+Fix (in bridge): normalize to digits and match on suffix:
+- `toE164(raw)` = `"+" + raw.replace(/\D/g, "")`
+- `numbersMatch(have, want)` = compare digits-only, match if `a === b || a.endsWith(b) || b.endsWith(a)`
+- `threadId = "t.+" + digits` (strip the `+` from the normalized number first, else `t.++...`)
 
-`sendMessage` 401s without WAA/BotGuard + reCAPTCHA tokens that Google mints by running obfuscated JS in a real page. The GV SDK cannot fabricate them; they're short-lived. Mechanism in this repo:
+Debug with `DEBUG=1` in the bridge .env — logs every event with `otherParty` vs `wantParty`, direction, attachment presence, and each filter rejection reason.
 
-```bash
-bun run capture-tokens   # bin/capture-send-tokens.ts in the bridge dir
-```
+## Outbound sends: WAA/reCAPTCHA tokens
 
-- Launches persistent Chromium profile at voice.google.com/messages, hooks the network layer, and extracts `body[10]` (the `[attestationToken, null, null, recaptchaToken]` array) from the next `api2thread/sendsms` request.
-- **Requires a real send**: you must actually send a text in the browser window for the tokens to be minted/intercepted.
-- Writes `GV_SEND_ATTESTATION_TOKEN` / `GV_SEND_RECAPTCHA_TOKEN` into the bridge `.env`.
-- Fails fast if `DISCORD_TOKEN` isn't set.
+Discord→phone sends need the anti-abuse tokens Google mints (WAA/BotGuard attestation + reCAPTCHA), session-recent and short-lived; the SDK cannot fabricate them. Capture a fresh pair with `bun run capture-tokens` (opens a real Chromium window; send ANY text to any number; the helper intercepts the `sendsms` request and writes `GV_SEND_ATTESTATION_TOKEN`/`GV_SEND_RECAPTCHA_TOKEN` to .env). Without them, inbound still works but outbound is skipped.
 
-## Env + linking gotchas
+## Attachments (both directions now)
 
-- `start` runs `bun --env-file=.env run index.ts`; `capture-tokens` uses its own `.env` too.
-- `google-voice-client` is a local dep via `link:google-voice-client` — register once with `bun link` at the repo root before `bun install` in the bridge.
-- Bridge `.env` is gitignored by the root `.env` pattern; it carries `DISCORD_TOKEN`, `BRIDGE_DM_USER_ID`, `BRIDGE_PHONE` (E.164), GV session vars, and the `GV_SEND_*` tokens.
-- Discord user id: Developer Mode → copy user id.
+- **Voice → Discord**: `voice.on("messageCreate")` → `voice.downloadAttachment(id)` → `dm.send({ files: [{ attachment: Buffer.from(data), name }] })`.
+- **Discord → Voice**: first `message.attachments` item (Collection) → `fetchDiscordAttachment(url, contentType)` (plain fetch of the CDN url) → pass as `sendMessage(threadId, text, tmpId, { attachment: { data, mimeType }, tokens })`. Attachment-only DMs (no text) must NOT be skipped when a photo is present.
+
+## Env (bridge .env)
+
+`GV_*` session vars (from repo root .env), `DISCORD_TOKEN` (user token), `BRIDGE_DM_USER_ID`, `BRIDGE_PHONE` (lenient format ok now), `GV_SEND_ATTESTATION_TOKEN`/`GV_SEND_RECAPTCHA_TOKEN` (optional), `DEBUG=1` (verbose event/filter logging).
