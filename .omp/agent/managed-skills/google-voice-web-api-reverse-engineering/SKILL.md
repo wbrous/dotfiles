@@ -1,71 +1,47 @@
 ---
 name: google-voice-web-api-reverse-engineering
-description: "Use when reverse-engineering Google Voice's internal (undocumented) web API from a HAR capture or curl request of voice.google.com — e.g. building a client to send/receive SMS, or investigating other clients6.google.com/voice/v1/voiceclient/* endpoints. Covers the verified SAPISIDHASH auth formula, the api2thread/list and api2thread/sendsms endpoints and their real field mapping (message text is plaintext, not encoded), the sendsms anti-abuse token requirement (WAA/BotGuard + reCAPTCHA-style token pair, tokens not bound to exact message text), the WAA/BotGuard attestation endpoint, why Firefox HAR exports can silently redact Cookie/Authorization values, how to validate captured credentials before trusting them, the SIDCC-family cookie rotation that makes a captured session go stale within roughly an hour, and how to extract exact request bodies from a curl --data-raw ANSI-C ($'...') string containing octal escapes."
+description: "Use when reverse-engineering Google Voice's internal web API (sendsms, api2thread/list, attachments, WAA/BotGuard attestation, SAPISIDHASH auth, session cookie renewal) or debugging cookie expiry/401s in a client that replays a browser session."
 ---
 
-## Endpoints (all POST, `alt=protojson&key=<apiKey>` query params)
+# Google Voice web API reverse-engineering
 
-- `https://clients6.google.com/voice/v1/voiceclient/api2thread/list` — list every thread + event metadata **and message text**. Body: `[2,100,50]` (empty `"[]"` body is rejected with 400).
-- `https://clients6.google.com/voice/v1/voiceclient/api2thread/sendsms` — send an SMS. Requires anti-abuse tokens (see below) or the server returns 401.
-- `https://waa-pa.clients6.google.com/$rpc/google.internal.waa.v1.Waa/Create` — Google's generic BotGuard/Web-Application-Attestation service (same system YouTube uses for "poToken"). Uses a *different* API key than the voiceclient endpoints. Unrelated to message content — it's a proof-of-genuine-browser challenge/response system.
+Reverse-engineered from Firefox HAR captures of voice.google.com (2026-08-31), then validated live. Project: `/home/wils/Documents/Development/google-voice-ws` (bun library).
 
-## Auth: SAPISIDHASH (verified against live, non-redacted requests)
+## Endpoints (all `POST https://clients6.google.com/voice/v1/voiceclient/...?alt=protojson&key=AIzaSy<voiceApiKey>` — the `key` param is a public browser-shipped constant; grab the exact value from any live capture's query string, don't paste one here)
 
-```
-Authorization: SAPISIDHASH {ts}_{hash} SAPISID1PHASH {ts}_{hash} SAPISID3PHASH {ts}_{hash}
-hash = SHA1(`${ts} ${SAPISID_cookie} ${origin}`)   // note: sapisid BEFORE origin
-```
-`origin` = `"https://voice.google.com"` (the page origin, not the request target host `clients6.google.com`). This is the field order that reproduces real captured Authorization headers exactly — the commonly-cited "ts origin sapisid" order is WRONG for this API; verify empirically against a real capture, don't trust memory/docs.
+- `api2thread/sendsms` — send. Body (positional array): `[null,null,null,null,text,threadId,null,null,[tmpIdNumeric],mediaField,botguardField]`
+  - `text`: plaintext SMS body VERBATIM (no encoding). `mediaField`: `[2, base64ImageBytes]` for photo MMS, else null. `botguardField`: `[wsaToken, null, null, recaptchaToken]` — see WAA below.
+  - **Attachment size limit**: ~11MB request body → real `400 INVALID_ARGUMENT` (`base64_format: "CAU="`); ~400KB succeeds. Exact cutoff unknown; library defaults to 1MB cap with sharp-based JPEG recompression fallback.
+- `api2thread/list` — read. Body: `[2,100,50]` (empty `[]` → 400). Response: `[threads, ...]`, each thread `[threadId, _, events]`.
+  - Event row (0-indexed): `0`=id, `1`=timestampMs, `2`=accountNumber, `5`=directionFlag (0=RECEIVED, 1=SENT), `9`=SMS text OR MMS type label (`"MMS Sent"`/`"MMS Received"` — NOT content), `14`=MMS content `[caption, _, attachments, ...]` or null, `15`=otherPartyNumber, `17`=tmpId (echoed from send), `last`=threadId.
+  - Attachment entry: `[mimeType, idWithDashSuffix, _, [[sizeCode,width,height],...], _, _, _, _, downloadPath]`.
+  - **Gotcha**: for MMS events `row[9]` is a fixed label; the real content is `row[14]`. Reading index 9 for text yields `"MMS Sent"` garbage.
+- Attachment download: `GET https://voice.google.com/u/{authUser}/a/i/{attachmentId}?s={sizeCode}` — plain cookie auth, NO SAPISIDHASH needed. Works for received images (no network request exists for received images in HARs — bytes come from this URL only).
+- WAA/BotGuard: `POST https://waa-pa.clients6.google.com/$rpc/google.internal.waa.v1.Waa/Create` with body `["<sitekey>"]`, `X-Goog-Api-Key: AIzaSy<waaApiKey>` (again public; read from a live capture), `X-User-Agent: grpc-web-javascript/0.1`. This is Google's generic anti-abuse attestation (same system as YouTube's poToken), NOT message encoding. The sendsms botguardField tokens are NOT bound to message text (replaying captured tokens with different text succeeded) — they're bound to session recency.
 
-`SAPISID` (or `__Secure-1PAPISID`/`__Secure-3PAPISID`, same value) comes from the `Cookie` header of an authenticated google.com session.
-
-## sendsms request body shape (11-element JSON array)
-
-```
-[null,null,null,null, TEXT, threadId, null,null, [tmpId], null, tokensArray]
-```
-- `TEXT` (index 4): **plaintext message body, verbatim, no encoding**. Don't assume it's encrypted/opaque just because it looks unfamiliar — a message whose body is literally "hello" appears as the literal string `"hello"`.
-- `threadId` (index 5): e.g. `"t.+14697590653"`.
-- `tmpId` (index 8, wrapped in an array): client-chosen unique numeric id, echoed back in the corresponding list-response event row so you can correlate.
-- `tokensArray` (index 10): **4-element array** `[attestationToken, null, null, recaptchaToken]`, NOT a 1-element wrapper.
-  - `attestationToken`: starts with `!`, ~1500 chars, from the WAA/BotGuard flow.
-  - `recaptchaToken`: starts with `0cAFcWeA` (or similar), ~2000+ chars, reCAPTCHA-style.
-  - Omitting this array (`null`) → server returns **401 Unauthorized**. This is the actual gate, not a coincidental auth issue.
-  - **Tokens are not bound to the exact message text.** A token pair captured for one message ("hello") successfully sent a completely different message ("Hello from AI") minutes later — they appear to validate session/browser recency, not per-message content. So a single manual capture of `{attestationToken, recaptchaToken}` can be reused across several sends within some (unmeasured, likely short — an hour or less given SIDCC rotation) time window.
-  - Full automated generation requires running Google's obfuscated BotGuard JS challenge (headless browser or a reverse-engineered VM interpreter, à la yt-dlp's po_token providers) — out of scope for a HAR-capture-only client; treat tokens as caller-supplied.
-
-## api2thread/list response row shape (30+ element array per event)
+## SAPISIDHASH auth (verified formula)
 
 ```
-[id, timestampMs, accountNumber, participantsArray, typeCode, directionFlag,
- _,_,_, TEXT, _,_,_,_,_, otherPartyNumber, _, tmpId, ...tail, threadId]
+Authorization: SAPISIDHASH {ts}_{sha1hex("{ts} {sapisid} https://voice.google.com")} SAPISID1PHASH {same} SAPISID3PHASH {same}
 ```
-- `TEXT` (index 9): plaintext message body, verbatim — same field philosophy as the send request. **This is the field that actually carries content; don't assume metadata-only responses hide the text elsewhere or that it's encrypted.**
-- `directionFlag` (index 5): `0` = received, `1` = sent (redundant with `typeCode` at index 4: `10`=received sms, `11`=sent sms).
-- `tmpId` (index 17): present (matches the tmpId sent in the corresponding sendsms request) for events this account sent; `null` for received events.
-- `threadId`: last element of the row.
+Field order is `ts SPACE sapisid SPACE origin` (getting this wrong = 401). ts = unix seconds, fresh per request.
 
-Top-level response shape: `[[[threadId, _, eventsArray], ...], "1", "v"]`.
+## Session cookie renewal (the 401 problem)
 
-## Firefox HAR export redaction (critical gotcha)
+- `SIDCC`/`__Secure-1PSIDCC`/`__Secure-3PSIDCC` expire quickly (minutes-hours); `SID`/`HSID`/`SSID`/`APISID`/`SAPISID` are long-lived.
+- Browsers renew via `POST https://accounts.google.com/RotateCookies` body `[72,"<numericToken>"]` — but the token is minted by page JS; CANNOT be reproduced with plain HTTP.
+- **App passwords do NOT work** — legacy protocols only (IMAP/SMTP/CalDAV), no relationship to web session cookies.
+- **No OAuth path** for consumer Voice SMS.
+- Solution implemented: `refreshCookies()` in src/refresh.ts — persistent Playwright Chromium profile loads voice.google.com (its JS rotates cookies), then reads the jar back. First run interactive login (2FA once), later runs headless + cron-able. `writeEnvCookie()` updates `.env` in place. CLI: `bun run refresh-cookies`.
+- Use system `/usr/bin/chromium` via `executablePath` fallback — avoids the ~184MB `bunx playwright install chromium` download entirely (Playwright 1.62 wants build 1234; cached 1228 won't satisfy it, but any system chromium works).
 
-Firefox's "Save All As HAR" **silently anonymizes** `Cookie`/`Authorization` header values unless "Include sensitive data" is checked before capture. Symptom: the exported Authorization header's embedded SHA1 hash doesn't reproduce when computed from the exported Cookie's SAPISID value using the correct formula — that mismatch is the fingerprint of redaction, not a formula bug. Real, usable credentials require either re-exporting with sensitive data included, or copy-pasting a raw curl / individual header values directly from DevTools (Copy as cURL / Copy Value), which are NOT redacted.
+## HAR capture notes
 
-`SIDCC`/`__Secure-1PSIDCC`/`__Secure-3PSIDCC` rotate frequently (well under a day, observed expiring within roughly an hour or two during active use) — a `.env`-pinned cookie snapshot will start returning 401 on previously-working requests; when that happens, ask for a fresh curl capture rather than assuming a code regression.
+- Firefox HAR export anonymizes `Cookie`/`Authorization` headers unless "Include sensitive data" is enabled in the export gear menu. Detection: compute SAPISIDHASH from the SAPISID cookie + ts in the same request — mismatch means redacted.
+- To find where a value lives on the wire: send a unique greppable test string (e.g. `ZZQTESTMSG7f3a9c1`) and use Firefox Network panel's built-in search (magnifying glass) which searches request AND response bodies, not just URLs.
+- Message text appears VERBATIM in both sendsms body index 4 and list response index 9 — earlier confusion came from test messages whose literal text was "SEND MESSAGE"/"RECEIVE MESSAGE", looking like protocol constants.
+- `curl --data-raw $'...'` bodies with octal escapes (`\041`) decode via python `json.loads` after shell printf; escape `!` as `\041` for history safety.
 
-## Extracting a curl `--data-raw $'...'` body with octal escapes
+## Auth flow for real sends
 
-curl commands copy-pasted from Firefox often use ANSI-C quoting (`$'...'`) with octal escapes like `\041` for `!` inside the JSON string. Don't hand-unescape these — write the full `BODY=$'...'` assignment verbatim into a bash script file and let bash's own ANSI-C-quote parsing do it:
-```bash
-cat > /tmp/extract.sh <<'OUTER'
-BODY=$'...(paste exact $'...' string here)...'
-printf '%s' "$BODY" > /tmp/body_decoded.json
-OUTER
-bash /tmp/extract.sh
-python3 -c "import json; print(json.load(open('/tmp/body_decoded.json')))"
-```
-This reliably decodes `\041`→`!` and any other octal/hex escapes without manual regex, and lets you `json.load` the result directly.
-
-## Validating a captured credential before trusting it
-
-Never assume a captured cookie/auth pair works. Recompute the SAPISIDHASH from the captured SAPISID + timestamp + origin and compare byte-for-byte against the captured Authorization header. If they don't match, the capture is redacted/stale — don't build on it. If they do match, still do one read-only live call (e.g. `api2thread/list`) before attempting a side-effecting one (e.g. `sendsms`), and never blindly retry a failed send multiple times with different payloads — each attempt may have a real-world side effect (an actual SMS to a real phone number).
+401 without tokens; 200 with captured `[botguardToken, null, null, recaptchaToken]` replay. Token reuse window is short (session-bound); regenerate via the browser refresh flow or re-capture.
