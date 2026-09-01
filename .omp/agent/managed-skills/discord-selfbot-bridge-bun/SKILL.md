@@ -1,43 +1,41 @@
 ---
 name: discord-selfbot-bridge-bun
-description: "Use when working on the google-voice-ws Discord selfbot bridge (examples/discord-bridge/): the youtsuho-v13 selfbot fork's getUploadURL file_size bug, lenient phone matching, self-loop guard, WAA/reCAPTCHA token capture, and bun link/lockfile gotchas."
+description: "Use when working on the google-voice-ws Discord selfbot bridge (examples/discord-bridge/) — the youtsuho-v13 fork's getUploadURL file_size bug, stale 400-vs-401 send-token diagnosis, phone-number matching, and the WAA/reCAPTCHA capture-tokens workflow."
 ---
 
-# discord-selfbot-bridge-bun
+# Discord selfbot bridge (bun)
 
-Working notes for the Discord selfbot bridge in `examples/discord-bridge/` (this repo's bridge between one Google Voice phone number and one Discord DM, running as the user's own Discord account).
+Bridges one Google Voice phone number with one Discord DM by logging in as YOUR OWN Discord user account (a selfbot) via `discord.js-selfbot-youtsuho-v13` (maintained fork of the archived `discord.js-selfbot-v13`). Location: `examples/discord-bridge/` in the google-voice-ws repo. ToS-warning: Discord bans selfbots; account-loss risk is the user's call.
 
-## Architecture
+## Direction flow
 
-- `index.ts`: selfbot via `discord.js-selfbot-youtsuho-v13` (the active fork of the archived `discord.js-selfbot-v13`). String event names ("ready"/"messageCreate"), NOT the v14 `Events` enum. `google-voice-client` is linked via `bun link` (not `file:` — the `file:` protocol stages gitignored `dist/` and the link breaks).
-- Two directions:
-  - Voice → Discord: `voice.on("messageCreate")` → filter `RECEIVED` + phone match → `dm.send` (text or `files:[{attachment: Buffer, name}]`).
-  - Discord → Voice: `discord.on("messageCreate")` → ignore self (`author.id === discord.user?.id`, otherwise it loops), require `BRIDGE_DM_USER_ID`, DM/GROUP channel only → `voice.sendMessage(threadId, text, tmpId, { tokens, attachment })`.
-- `bin/capture-send-tokens.ts`: captures fresh WAA/BotGuard + reCAPTCHA tokens for outbound sends by intercepting a real `api2thread/sendsms` request (body[10] = `[attestation, null, null, recaptcha]`) in a Playwright browser window, then writes `GV_SEND_ATTESTATION_TOKEN`/`GV_SEND_RECAPTCHA_TOKEN` to `.env`.
-- `DEBUG=1` env enables verbose logging of every event + filter decision.
+- **Voice → Discord** (works with just the session cookie): `GoogleVoiceClient` event loop (`messageCreate`) → forward to `BRIDGE_DM_USER_ID`'s DM; first attachment downloaded via `voice.downloadAttachment(id)` and sent as a file.
+- **Discord → Voice** (needs WAA/reCAPTCHA send tokens): `messageCreate` in the DM from the bridged user → `voice.sendMessage(threadId, text, tmpId, { tokens, attachment? })`; first Discord attachment fetched and sent as MMS. Skip own messages (`author.id === client.user.id`) to avoid echo loops.
 
-## Gotchas (all hit in real sessions)
+## Stale-token diagnosis (400 vs 401) — CRITICAL
 
-### 1. Selfbot fork `getUploadURL` file_size bug (attachment forward fails)
-Voice→Discord attachment sends fail with `files[0].file_size: int value should be greater than or equal to 1`. Root cause: the fork's `Util.getUploadURL` (src/util/Util.js) computes `file_size: file.byteLength ?? file.size ?? 0` from the **MessagePayload wrapper**, but the actual bytes are at `wrapper.file` — so it always sends `file_size: 0`. Fix: rebind `Util.getUploadURL` via CJS `require` (an ESM `import * as` namespace is frozen and can't be rebound) to stamp `byteLength` from `f.file?.byteLength` before delegating to the original. Import path is `discord.js-selfbot-youtsuho-v13/src/util/Util` (not `lib/`); no `.d.ts` exists there — the bridge declares the module shape inline on the require cast. The bridge's `index.ts` has the exact patch.
+`api2thread/sendsms` error semantics:
+- **401 Unauthorized** = missing botguardField entirely (no tokens configured), or expired session cookie.
+- **400 Bad Request** with `voice_error: {"error_code":"INVALID_ARGUMENT"}` = tokens present but **STALE**. WAA/BotGuard + reCAPTCHA tokens are session-recent, expire in minutes-to-hours (same window as SIDCC). The session cookie may still be valid (inbound forwarding keeps working) while outbound 400s. The bridge's catch block prints a pointed "run bun run capture-tokens" hint on 400/INVALID_ARGUMENT.
 
-### 2. Phone matching: E.164 vs national format
-Voice returns `+14697590653` (E.164 with country code), but `BRIDGE_PHONE` in `.env` is often `4697590653` (national, no `+`). Strict `!==` drops every message (visible in DEBUG as `otherParty` vs `wantParty`). Fix: compare on digits with suffix matching (`a.endsWith(b) || b.endsWith(a)`) — tolerates missing `+`, country-code differences, spacing. `threadId` is `t.+<digits>` (strip the `+` before building it or you get `t.++…`).
+Refresh: `bun run capture-tokens` (bin/capture-send-tokens.ts) opens a real Chromium window (persistent profile), hooks network, and the user sends a real text; the helper intercepts the sendsms request's body index 10 (`[attestation, null, null, recaptcha]`) and writes GV_SEND_ATTESTATION_TOKEN / GV_SEND_RECAPTCHA_TOKEN into the bridge .env. Tokens must be re-captured periodically.
 
-### 3. Selfbot loop guard
-The selfbot's OWN forwarded messages fire `messageCreate` too. Must ignore `author.id === discord.user?.id` before anything else, or the bridge echoes every forward back into the phone.
+## youtsuho-v13 getUploadURL file_size bug (patched in bridge)
 
-### 4. Selfbot ToS risk
-Using a user token is a Discord ToS violation → account deactivation. The skill/bridge flags this; never present it as risk-free, always recommend a throwaway account.
+Fork's `Util.getUploadURL` computes Discord `file_size: file.byteLength ?? file.size ?? 0` from the MessagePayload wrapper — but the wrapper's actual bytes are at `wrapper.file`, so it always sends `file_size: 0` → Discord rejects with `files[0].file_size: int value should be greater than or equal to 1`. Fix in index.ts: rebind `Util.getUploadURL` via CJS `require` (ESM `import * as` namespace is frozen) to stamp `byteLength` from inner `.file` before delegating. Use `createRequire(import.meta.url)` to require `discord.js-selfbot-youtsuho-v13/src/util/Util`. No ambient decl needed (cast the require result); text-only sends unaffected (getUploadURL returns early on empty files).
 
-### 5. Outbound sends need live tokens
-`sendsms` 401s without `[attestationToken, null, null, recaptchaToken]`. They're minted by Google's page JS, session-recent, NOT bound to message text. Can't be fabricated; re-capture with `capture-send-tokens` (user must send a real text in the browser window).
+## Phone-number matching
 
-### 6. `bun install` lockfile stalls in this example dir
-Fresh lockfile regeneration (`rm bun.lock && bun install`) resolved repeated "Resolved, downloaded and extracted [0]" hangs when adding the selfbot fork.
+Google Voice returns E.164 (`+14697590653`); BRIDGE_PHONE env may be national (`4697590653`) or formatted. Bridge uses `toE164` (strip non-digits, re-add +) and `numbersMatch` (digits-only, suffix-tolerant: one number a suffix of the other) — never strict !==. threadId derived from normalized digits to avoid double-+ (`t.+<digits>`).
 
-## Verification shortcuts
+## Debugging
 
-- Reproduce the fork's wrapper shape: `MessagePayload.resolveFile({attachment: Buffer.from("x"), name})` → `{ file: Buffer, name, ... }` with NO top-level `byteLength`.
-- Sanity check numbersMatch with the exact failing pair: `+14697590653` vs `4697590653` must MATCH; a truly different number must not.
-- Parent suite must stay 44/44 + typecheck + build after bridge changes.
+`DEBUG=1` env enables per-event debug logging: every Voice messageCreate (direction, otherParty vs wantParty, text preview, attachment presence) and Discord messageCreate (author, self, channelType, content), each filter rejection with reason, forward/send attempts.
+
+## Env
+
+GV_COOKIE/GV_API_KEY/GV_SAPISID/GV_AUTH_USER (session), DISCORD_TOKEN (user token), BRIDGE_DM_USER_ID, BRIDGE_PHONE, GV_SEND_ATTESTATION_TOKEN/GV_SEND_RECAPTCHA_TOKEN (optional, stale-prone), DEBUG.
+
+## Not yet automated
+
+Token capture is manual (requires a real send in a browser window); an automated headless periodic refresh (cron/systemd) was offered but not built.
