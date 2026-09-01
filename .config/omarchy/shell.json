@@ -26,8 +26,8 @@
           "format": "ddd d MMM HH:mm",
           "formatAlt": "d MMMM 'W'ww yyyy",
           "verticalFormat": "HH\n—\nmm",
-          "birthYear": 2011,
-          "lifeExpectancy": 100
+          "birthYear": 0,
+          "lifeExpectancy": 55
         },
         {
           "id": "omarchy.weather",
