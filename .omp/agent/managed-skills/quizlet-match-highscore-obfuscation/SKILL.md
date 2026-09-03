@@ -1,58 +1,83 @@
 ---
 name: quizlet-match-highscore-obfuscation
-description: "Use when analyzing, reimplementing, or documenting Quizlet's Match/Scatter game highscore submission API (POST /{setId}/scatter/highscores) — covers the auth model (qltj JWT + qtkn CSRF double-submit + Cloudflare cookies), the opaque {\"data\":\"byte-array-as-dash-joined-decimal\"} payload format, and the reverse-engineered per-position additive cipher that encodes the 3-digit score inside that payload."
+description: "Use when analyzing, reimplementing, or documenting Quizlet's Match/Scatter game highscore submission API (POST /{setId}/scatter/highscores) — covers the auth model (qltj JWT + qtkn CSRF double-submit + Cloudflare cookies), the opaque {\"data\":\"byte-array-as-dash-joined-decimal\"} payload format, the reverse-engineered per-position additive cipher that encodes the 3-digit score inside that payload, and the reusable INFO.md + submit-match-score.ts POC pattern for writing this up and proving it against a live session."
 ---
 
-## Context
-Quizlet's Match game score submission (`POST https://quizlet.com/{setId}/scatter/highscores`)
-does not send a plain numeric score. It sends `{"data": "<N dash-joined decimal
-bytes>"}` — an obfuscated byte array built client-side in Quizlet's JS bundle.
-The server decodes it, persists a `session` row, and echoes back the canonical
-`score` in the response (server is authoritative; client can't just POST a
-fake score field).
+## Source material
 
-Full findings written up in a prior task's deliverable: see
-`quizlet-match-speed/INFO.md` in that project (if still present) for the
-complete request/response reference, endpoint table, auth cookie breakdown,
-and telemetry-vs-scoring separation (LogRocket via jg7y.quizlet.com,
-el.quizlet.com, Braze — all unrelated to scoring).
+Full reverse-engineering writeup lives in `INFO.md` in the
+`quizlet-match-speed` project (built from a HAR capture,
+`quizlet.com_highscore.har`, of three real Match playthroughs). A working
+TypeScript POC that exercises the documented flow lives alongside it as
+`submit-match-score.ts`. Read both before re-deriving anything — this skill
+is a pointer/summary, not a replacement for them.
 
-## Reverse-engineered cipher (score portion)
-Diffing 3 real submissions (scores 328, 278, 172) from the same session showed
-the payload is byte-identical except at a few positions. The 3-digit score is
-encoded at a fixed offset (index 9,10,11 in the observed 99-byte payloads)
-using **per-position additive offsets**:
+## Auth model
 
-- `byte[9]  = hundreds_digit + 55`
-- `byte[10] = tens_digit     + 48`
-- `byte[11] = ones_digit     + 53`
+- `qltj` — HS384 JWT identity cookie (user id, email, issuer). Rolling
+  expiry, refreshed via `Set-Cookie` on almost every response.
+- `qlts` — long-lived (~400 day) session/tracking token cookie.
+- `qtkn` — CSRF/session security token. Its value must be echoed verbatim
+  into both the `CS-Token` and `X-Quizlet-API-Security-ID` request headers
+  on the highscore POST (double-submit-cookie CSRF pattern).
+- `cf_clearance`, `__cf_bm`, `_pxhd`, `_cfuvid` — Cloudflare bot-management
+  cookies; requests without valid ones get a challenge page instead of a
+  response.
+- No separate public API key exists — submitting a highscore requires a
+  full logged-in browser session cookie jar.
 
-Verified exactly against all 3 samples (328→3,2,8; 278→2,7,8; 172→1,7,2).
-This is a trivial Caesar-style cipher, not real crypto — just enough to stop
-naive tampering.
+## Endpoint
 
-A separate 6-byte region (~index 71-76 in the samples) also varies with score
-but does NOT follow the same rule — likely an elapsed-time-derived checksum
-the server cross-validates against the score. NOT decoded; no ground-truth
-time value was available in the captured HAR to correlate against.
+`POST https://quizlet.com/{setId}/scatter/highscores`
+Body: `{"data": "<99 decimal bytes, dash-joined>"}` (e.g.
+`"123-35-117-100-...-202"`). Endpoint name is legacy ("scatter" = old name
+for Match). Response echoes the server's own decoded/canonical `score` in
+a `session` model — the server is authoritative, not the client.
 
-All other ~90 of 99 bytes were constant across every submission in the same
-browser session — likely game-mode/set/client-version framing or a
-session-stable key, not randomized per-request.
+## The cipher (partially recovered)
 
-## Caveats / what's still unknown
-- Digit-offset rule only confirmed for 3-digit scores; untested for 1, 2, or
-  4+ digit scores (offset-per-position pattern may not generalize the same way).
-- The 6-byte "checksum" region is unsolved — would need more samples with a
-  known correlated time value to crack.
-- Full reimplementation requires the actual Quizlet frontend JS (not present
-  in network traffic) to know the general byte-layout algorithm beyond what
-  was diffed.
+Diffing three real submissions (scores 328, 278, 172) byte-for-byte showed:
 
-## Method used to find this
-1. Grep HAR for repeated POSTs to `scatter/highscores`, pull the `data` field
-   and the response's decoded `score` from 3+ separate submissions.
-2. Diff the byte arrays pairwise (Python) to find which indices change.
-3. Correlate changed-byte values against known digits of the score to find
-   the arithmetic relationship (simple `value - digit` per position, check
-   for a constant offset).
+- **Bytes 9–11 (0-indexed) encode the 3-digit score**, one digit per byte,
+  each position with its own fixed additive offset:
+  - `byte[9]  = hundreds_digit + 55`
+  - `byte[10] = tens_digit + 48`
+  - `byte[11] = ones_digit + 53`
+  Confirmed exactly against all three samples (328→3,2,8; 278→2,7,8;
+  172→1,7,2).
+- **Bytes 71–76 vary in lock-step with score but do NOT follow the same
+  offset rule** — almost certainly an elapsed-time or checksum field the
+  server cross-validates against the score digits. This region was
+  **never fully decoded** — no ground-truth time value existed in the HAR
+  to correlate against it.
+- All other 90 of the 99 bytes are byte-for-byte constant across every
+  submission in the same session (game-mode/set/client-version framing,
+  possibly a session-stable nonce).
+
+## Reusable POC pattern (submit-match-score.ts)
+
+1. GET the Match page's Next.js SSR `match.json` route first (mirrors
+   "loading the game" before playing).
+2. Take a captured 99-byte envelope as a template, override only bytes
+   9/10/11 via the digit cipher above for the desired (deliberately low,
+   leaderboard-safe) score, leave bytes 71–76 as captured.
+3. POST with `CS-Token` / `X-Quizlet-API-Security-ID` headers = the
+   session's `qtkn` cookie value.
+4. Report whatever score the server actually persists — since bytes 71–76
+   are unresolved, the returned score may not match the requested one;
+   that mismatch (or lack thereof) is itself the useful signal.
+
+**Cannot verify without live cookies.** The HAR's session cookies expire /
+rotate (`cf_clearance` especially); running the POC for real requires the
+user's own fresh `QUIZLET_COOKIE` + `QUIZLET_QTKN` from a live logged-in
+browser session — state this limitation explicitly rather than fabricating
+a live run.
+
+## Style note
+
+This repo enforces a `ts-no-tiny-functions` rule: don't wrap a single
+`return <expr>` in a named function unless it has 3+ call sites or documents
+a non-obvious formula. Inline one-liners (e.g. build headers as a `const`
+object spread with `...BASE_HEADERS`, not a `baseHeaders()` function; inline
+`bytes.join("-")` at its one call site instead of a named
+`encodeDataField` wrapper).
