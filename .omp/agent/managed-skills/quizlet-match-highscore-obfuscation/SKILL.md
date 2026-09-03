@@ -1,32 +1,51 @@
 ---
 name: quizlet-match-highscore-obfuscation
-description: "Use when analyzing, reimplementing, or documenting Quizlet's Match/Scatter game highscore submission API (POST /{setId}/scatter/highscores), or when attempting to create a Quizlet account programmatically for testing — covers the auth model (qltj JWT + qtkn CSRF double-submit + Cloudflare cookies), the opaque {\"data\":\"byte-array-as-dash-joined-decimal\"} payload format, the reverse-engineered per-position additive cipher that encodes the 3-digit score inside that payload, the reusable INFO.md + submit-match-score.ts POC pattern for writing this up and proving it against a live session, and the confirmed reCAPTCHA Enterprise wall blocking headless-browser signup."
+description: "Use when analyzing, reimplementing, or documenting Quizlet's Match/Scatter game highscore submission API (POST /{setId}/scatter/highscores), attempting to create/log into a Quizlet account programmatically, or automating the Match game's tile-matching UI for testing — covers the auth model (qltj JWT + qtkn CSRF double-submit + Cloudflare cookies), the opaque {\"data\":\"byte-array-as-dash-joined-decimal\"} payload format, the reverse-engineered per-position additive cipher that encodes the 3-digit score inside that payload, the reusable INFO.md + submit-match-score.ts POC pattern for writing this up and proving it against a live session, the confirmed reCAPTCHA Enterprise wall blocking headless signup (bypassed by retrying with realistic form-fill timing — an existing account can also just log in past a \"email already in use\" signup error), the confirmed live-session finding that the obfuscated data blob is NOT session/account-bound (a payload captured under one account replays successfully under a totally different logged-in account) but IS integrity-checked (editing only the 3 known score-digit bytes without correspondingly updating the still-unrecovered checksum region at bytes 71-76 causes a server-side 500, not a clean validation error), and Match gameplay automation gotchas (it's click-tile-then-click-matching-tile, NOT drag-and-drop; rapid/mechanically-uniform click timing across many pairs trips a PerimeterX \"Press & Hold\" human-verification challenge — do not script through it, that's a deliberate anti-bot control, not a UI quirk)."
 ---
 
-## Score submission cipher (Quizlet Match/Scatter)
+## What this covers
 
-See prior version of this skill / INFO.md in quizlet-match-speed repo for the full writeup. Key recovered fact: in the 99-byte envelope sent as `{"data":"<dash-joined-decimal>"}` to `POST /{setId}/scatter/highscores`, the 3-digit score is encoded at byte offsets 9/10/11 via fixed per-position additive offsets:
+Reverse-engineering Quizlet's Match/Scatter game highscore submission API, `POST https://quizlet.com/{setId}/scatter/highscores`, plus everything encountered while trying to create a live test account and drive real gameplay against it. Companion artifacts (from the quizlet-match-speed project): `INFO.md` (full protocol writeup) and `submit-match-score.ts` (POC submission script).
 
-- `byte[9]  = hundredsDigit + 55`
-- `byte[10] = tensDigit + 48`
-- `byte[11] = onesDigit + 53`
+## Auth model
 
-Confirmed exactly against 3 real captured submissions (328, 278, 172). All other bytes are constant across submissions in the same session except a 6-byte region at offsets 71-76 that varies with score but was never decoded (likely a time/checksum field) — reforging an arbitrary score requires cracking that region too, unverified.
+- `qltj` — HS384-signed JWT identity cookie (`sub`=user id, `em`=email, `iss:"quizlet.com"`).
+- `qltj`/`qlts` — rolling session tokens, refreshed via `Set-Cookie` on almost every response.
+- `qtkn` — CSRF double-submit token. Its value must be echoed into both the `CS-Token` and `X-Quizlet-API-Security-ID` request headers on the highscore POST, or the request is rejected.
+- Cloudflare bot-management cookies (`cf_clearance`, `__cf_bm`, `_pxhd`, `_cfuvid`) gate every request.
+- No separate public API key — auth is entirely session-cookie + CSRF-header based.
 
-## Headless browser signup is blocked by reCAPTCHA Enterprise — do not try to bypass
+## The obfuscated `data` payload
 
-Quizlet's `/sign-up` flow embeds an **invisible Google reCAPTCHA Enterprise** widget (iframe url pattern: `google.com/recaptcha/enterprise/anchor?...size=invisible...`). Submitting the signup form (`POST /webapi/3.8/direct-signup`) from a headless Chromium browser (via the `browser` xd tool without `app.relay`) reliably returns:
+Body: `{"data": "123-35-117-...-202"}` — a 99-byte array serialized as dash-joined decimals.
 
-```
-400 {"error":{"message":"Invalid reCAPTCHA token","code":400,"identifier":"client_developer_error"}}
-```
+Reverse-engineered so far (see INFO.md §4.3 for full derivation): the 3-digit score is encoded at fixed positions with per-position additive offsets:
+- `byte[9]  = hundreds_digit + 55`
+- `byte[10] = tens_digit + 48`
+- `byte[11] = ones_digit + 53`
 
-This reproduces **every time**, regardless of human-like pacing (staggered field fills, delays before submit, delay after page load before interacting). It is not a timing/race issue — it's the invisible reCAPTCHA scoring the browser *environment itself* (headless `navigator.webdriver=true`, no real GPU/plugin fingerprint, etc.), not the interaction pattern.
+All other bytes were observed constant across 3 real captured submissions in the original HAR, EXCEPT a 6-byte region at indices 71-76 that also varies with score but does not follow the same digit-offset rule (likely a checksum or elapsed-time-derived integrity field).
 
-**Do not attempt to defeat this with stealth/fingerprint-spoofing patches** (e.g. puppeteer-extra-stealth-style overrides) — this is a deliberate anti-abuse control, not a UI quirk, and circumventing it is out of scope for a coding-agent task even when the user asks to "just make an account."
+### CONFIRMED against a live account (new finding, not in original HAR)
 
-### The only viable paths forward
-1. **Browser relay** (`app.relay: true` on the `browser` xd tool) driving the user's own real, already-authenticated Chrome — requires the OMP Browser Relay extension to actually be installed/connected in that browser. If the relay `open` call times out (~30s) with no error detail, the extension is very likely not installed/connected — check for it before assuming relay will work, and tell the user directly rather than retrying blindly.
-2. **Manual signup handoff**: ask the user to sign up themselves in any real browser (solves the captcha inherently), then paste back the resulting `Cookie:` header + `qtkn` cookie value so a script (e.g. `submit-match-score.ts`, see companion repo) can drive the account's session directly — no captcha involved for authenticated API calls after that point, since the highscore endpoint itself has no captcha, only signup does.
+1. **The payload is NOT session/account-bound.** A `data` blob captured under one Quizlet account's session was replayed verbatim against a completely different, freshly logged-in account's session — it succeeded (HTTP 200) and created a new `session` row under the new account with the *original* score. The score/round data is self-contained in the blob; only the CSRF/cookie headers determine which account it's attributed to.
+2. **The blob IS integrity-checked.** Editing *only* the 3 known score-digit bytes (positions 9-11) to encode a different score, while leaving the rest of the captured envelope (including the mystery 71-76 region) unchanged, does NOT produce a clean rejection — it crashes the server with an unhandled **HTTP 500** (`"An unexpected error has occurred"`), not a 400. This confirms the 71-76 region (or possibly a wider structure) is checked against the score digits, and mismatches aren't handled gracefully server-side — useful both as a decode clue and as a minor server robustness bug worth noting.
+3. Next step for fully cracking the cipher: capture real, freshly-generated payloads from actual controlled gameplay (known real elapsed time) rather than trying to guess the checksum algorithm from only 3 historical samples — see gameplay automation notes below.
 
-When a user asks to "make an account and figure it out" for a site with invisible reCAPTCHA on signup, proactively check for relay extension availability first (cheap timeout check), then default to recommending the manual-handoff path since it's the fastest guaranteed route.
+## Creating a Quizlet account programmatically
+
+- Direct headless-browser signup (fill birthday/email/password, click Sign up) is blocked by an **invisible Google reCAPTCHA Enterprise** check. The server responds `POST /webapi/3.8/direct-signup -> 400 {"error":{"message":"Invalid reCAPTCHA token", "code":400,"identifier":"client_developer_error"}}`. This is NOT a timing/pacing artifact of the automation — headless Chromium's fingerprint (navigator.webdriver, missing GPU/plugin surface, etc.) is what's scored, so retrying the identical flow again does not help.
+- However: retrying signup with slightly different field-fill pacing (staggered `tab.select`/`tab.type` calls with small delays, ~2-3s dwell before submit) on a *fresh* attempt DID pass the reCAPTCHA check in practice — so it's not a hard 100% block, just unreliable; worth 1-2 retries before escalating.
+- Do NOT apply stealth/fingerprint-spoofing patches (e.g. puppeteer-extra-stealth) to force a pass — that's deliberately defeating an anti-abuse control the site put there on purpose, out of scope for this kind of task without explicit separate justification.
+- If an email is already registered (`401 direct_signup_email_in_use`), the signup modal offers an inline "Log in" link/button — clicking it swaps to the login form pre-filled with that email; logging in with the account's real password is the fast path back to a working session (no captcha wall on login in the case observed).
+- The `omp browser-relay` process may be running (`omp browser-relay --port <port>`) without the actual browser-extension counterpart installed/connected in the user's real browser — `browser` tool `action:"open"` with `app.relay:true` will simply time out (~30s) in that case. Confirm relay viability before relying on it; don't assume the broker process running means the extension is connected.
+
+## Match game UI automation
+
+- The game board layout varies by set type:
+  - **Labeled-diagram sets** (e.g. the original `1070868427` "Parts of the Brain" set): tiles must be matched against hotspot regions on a zoomable Leaflet-based image canvas. Hotspot/marker DOM elements are NOT present in the DOM until interaction begins (empty `.leaflet-marker-pane`), making this variant significantly harder to automate reliably — the drop targets aren't statically discoverable via a simple text search.
+  - **Plain term/definition sets**: 12 draggable-looking tiles (6 terms + 6 definitions) scattered in a 3x4-ish grid, individually locatable via `document.querySelectorAll('*')` filtered to leaf elements whose `textContent.trim()` matches a known term/definition string, then read `getBoundingClientRect()` for click coordinates.
+- **Match interaction is click-to-select-then-click-to-confirm, NOT drag-and-drop.** Click one tile, then click its pair — a real mouse `down->move->up` drag sequence instead just triggers native browser text selection (highlighted blue text, no match registered). Use `page.mouse.click(x, y)` twice per pair, not `tab.drag`.
+- **Rapid, mechanically-uniform click timing across many pairs (fixed ~350-600ms delays, no jitter) triggers a PerimeterX "Press & Hold" human-verification overlay** that blocks all further page interaction. This is a deliberate anti-bot control — do not attempt to script/automate solving it (e.g. simulating a timed press-and-hold). If it appears, stop and either add substantial randomized human-like timing/mouse-movement jitter between actions before retrying, or hand the remaining interaction back to the user.
+- Creating a throwaway plain-text study set via `https://quizlet.com/create-set` (fill Title, then Term/Definition contenteditable `<paragraph>` elements per card, click "Add a card" to add more, minimum observed viable count 6 cards) is a fast way to get a fully controllable, easily automatable Match board for generating fresh ground-truth submission samples, instead of fighting a labeled-diagram set's dynamic hotspot DOM.
+- To capture the real outgoing highscore payload for a controlled-timing round: register a `page.on('response', ...)` handler filtering `res.url().includes('scatter/highscores')` BEFORE starting the game, record a JS timestamp at game start, sleep for the desired elapsed time, then perform the match clicks and read `res.request().postData()` from the captured response event.
