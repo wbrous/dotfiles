@@ -1,6 +1,6 @@
 ---
 name: omarchy-notifications-plugin-architecture
-description: "Use when the user's customized omarchy notification plugin (wils.notifications clone): its architecture, the max-3 queue + 250ms pacing, right-click snooze, IPC handler methods and how to add new ones, keybind wiring in ~/.config/hypr/bindings.lua for notification actions, the bottom-right anchored/reflow popup stack, the \"+N more notifications\" overflow indicator, the QML gotchas that break edits, and the DND bar-indicator breakage caused by cloning the notifications plugin (fixed via a wils.indicators clone using pluginRegistry.resolveEnabledId)."
+description: "Use when the user's customized omarchy notification plugin (wils.notifications clone): its architecture, the max-3 queue + 250ms pacing, right-click snooze, IPC handler methods and how to add new ones, keybind wiring in ~/.config/hypr/bindings.lua for notification actions, the bottom-right anchored/reflow popup stack, the \"+N more notifications\" overflow indicator, the QML gotchas that break edits, the DND bar-indicator breakage caused by cloning the notifications plugin (fixed via a wils.indicators clone using pluginRegistry.resolveEnabledId), and the omarchy-exec-argv hint rename that silently breaks left-click \"click to edit\" actions (e.g. screenshot toasts) when the clone falls behind a stock update."
 ---
 
 The user's customizations live in the **user-owned clone**, NOT the packaged copy:
@@ -12,7 +12,32 @@ The user's customizations live in the **user-owned clone**, NOT the packaged cop
 
 Created via `omarchy plugin clone omarchy.notifications` (shell.json switched to `wils.notifications`, original disabled). `omarchy plugin remove wils.notifications` reverts to stock (cloneSourceRestores). Plugin hot-reloads on save under ~/.config/omarchy/plugins/, but **hot-reloads are flaky** — after edits, `omarchy restart shell` is the reliable path.
 
-The user has verified against `~/.dotfiles` (a bare git repo, `--git-dir=$HOME/.dotfiles --work-tree=$HOME`) that this file's committed baseline is the source of truth — `git --git-dir=$HOME/.dotfiles --work-tree=$HOME diff -- .config/omarchy/plugins/wils.notifications/Service.qml` shows exactly what's been added on top of the "og code". Keep that diff minimal and match the user's explicit ask — do not bundle unrequested IPC methods or refactors into the same change; when the user says "add ONLY these N shortcuts", the diff must contain only what implements those N things.
+The user has verified against `~/.dotfiles` (a bare git repo, `--git-dir=$HOME/.dotfiles --work-tree=$HOME`) that this file's committed baseline is the source of truth — `git --git-dir=$HOME/.dotfiles --work-tree=$HOME diff -- .config/omarchy/plugins/wils.notifications/Service.qml` shows exactly what's been added on top of the "og code". Keep that diff minimal and match the user's explicit ask — do not bundle unrequested IPC methods or refactors into the same change; when the user says "add ONLY these N shortcuts", the diff must contain only what implements those N things. **Also do not auto-assume the dotfiles-autosync extension picks up config/plugin edits** — it only fires for managed-skills; after fixing/editing files under `.config/omarchy/plugins/`, `git add`+`commit` them into the dotfiles bare repo yourself (through the gitleaks pre-commit hook).
+
+## KNOWN REGRESSION: `omarchy-exec-argv` hint rename breaks left-click actions
+
+**Symptom**: left-clicking a toast that's supposed to run a command (e.g. the screenshot toast's "click to edit" / `Super+Alt+,`) does nothing — no error, no launched app, just silently falls through to the "focus the sending app" fallback (which itself does nothing useful for `app_name=omarchy-action` toasts since there's no window to focus).
+
+**Root cause**: an upstream Omarchy update changed `/usr/share/omarchy/bin/omarchy-notification-send`'s `--exec` handling from a single shell-string hint (`omarchy-exec`, run via `Util.execDetached`) to a JSON-array argv hint (`omarchy-exec-argv`, run via `Util.execArgv`, safer — never touches a shell). The stock plugin (`/usr/share/omarchy/shell/plugins/notifications/`) was updated in lockstep, but a **cloned** plugin under `~/.config/omarchy/plugins/wils.notifications/` does NOT auto-update with system package upgrades — it's a point-in-time copy. If the clone still has the old single-string reader, `entry.exec` (looked up via hint key `omarchy-exec`) is always empty because the sender only ever sets `omarchy-exec-argv` now, and every click-action toast becomes silently inert.
+
+**Diagnosis path that found this**: read `NotificationCard.qml`'s `onClicked` → `cardClicked` signal → `Service.qml`'s `invokeDefaultAction` (looked structurally correct in isolation) → grepped for the hint key name (`omarchy-exec`) across the whole clone (`NotificationLogic.js`'s `execFromHints`) → compared against the **stock** plugin's equivalent function with the same grep and found it reads `omarchy-exec-argv` instead, plus a `parseExecArgv` validator and `Util.execArgv` runner that don't exist in the clone at all. Confirming a hot-reload/restart isn't the cause (it wasn't — `omarchy restart shell` came up clean, no QML errors, bug persisted) was a useful early elimination step before finding the real hint-key mismatch.
+
+**Fix** (grep `exec` across the whole plugin dir to find every touch point — do NOT assume `Service.qml` alone):
+- `NotificationLogic.js`: rename `execFromHints(hints)` → `execArgvFromHints(hints)` reading hint `"omarchy-exec-argv"` instead of `"omarchy-exec"`; add `parseExecArgv(value)` (JSON.parse + validate: array, all-string, non-empty program, program doesn't start with `-`; returns `null` on any failure — fails closed on a malformed/tampered hint). Rename the `exec` role to `execArgv` in `POPUP_ROLES`, `snapshotOf()`, `historyEntry()`, and the exports object at the bottom.
+- `Service.qml`: in `invokeDefaultAction`, replace `var command = String(entry.exec || "")` + `Util.execDetached(command)` with `var argv = NotificationLogic.parseExecArgv(entry.execArgv)` + `Util.execArgv(argv)`. Rename the two remaining `exec:`-keyed popupModel-entry literals (the restore-from-history entry and the synthetic "silenced notifications" glyph entry) to `execArgv:`. Update the doc comment above `invokePopupDefault` that names the role.
+- `Util.execArgv` already exists in the **shared, non-cloned** `qs.Commons` module (`/usr/share/omarchy/shell/Commons/Util.qml`) — it's a system-shared import, not per-plugin-cloned, so it's always current; no need to vendor it.
+
+**Verification recipe** (no UI automation needed — this plugin's toasts aren't reachable via computer-use/accessibility trees since they're bare wlroots layer-shell surfaces, not normal app windows):
+```bash
+omarchy restart shell   # confirm clean, no QML/journal errors
+/usr/share/omarchy/bin/omarchy-notification-send "Test" "body" --expire-time=60000 \
+  --exec bash -c "touch /tmp/exec_test_marker"
+sleep 0.3
+cat ~/.local/state/omarchy/notifications/<newest>.json   # confirm execArgv key is a populated JSON array, not exec:""
+omarchy-shell notifications invokeLast   # fires the real click path (invokePopupDefault(0)) via IPC — returns "none" if popupModel is empty (toast already gone), "ok" on success
+ls -la /tmp/exec_test_marker   # confirms the argv actually ran
+```
+Note: `omarchy-shell -q notifications <bogus-method-name>` exits 0 silently even for a method that doesn't exist on the IpcHandler (documented gotcha) — always use a *real* method name (check the `IpcHandler { target: "notifications" }` block for what's actually exposed, e.g. `invokeLast`, `dismissOne`, `dismiss(summary)`, `isDnd`, `toggleDnd`, `setDnd`, `showHistory`, `clear`, `dismissAll`, `ping`) and drop `-q` to see its actual string return, per the existing "does NOT echo return values" gotcha below.
 
 ## Current custom behavior (all in Service.qml)
 
@@ -65,6 +90,7 @@ readonly property var notificationService: bar?.shell?.firstPartyServiceFor(noti
 - Live popup files lag/mislead: measure cap with file-count bursts (send 12+ rapid, sample `ls ~/.local/state/omarchy/notifications/*.json | wc -l` → must stay ≤3). Also: **if DND or snooze is silently on, notifications produce zero live-file trace at all** — always check `omarchy-shell notifications isDnd` first when a burst test shows unexpectedly 0 files, before assuming the cap/pacing logic is broken.
 - **Screenshot/behavioral verification of animation timing**: temporarily multiply `fadeMs`/`slideMs` by ~10-15x (e.g. 180→2500), restart, capture a burst of `omarchy capture screenshot --fullscreen` at short sleep intervals to catch mid-animation frames, verify positions with `grim -g "<w>x<h>+<x>+<y>"` crops of the toast corner, then restore the original values and restart again before declaring done. Real-speed animation (150-300ms) is too fast for `omarchy capture` (~1-2s per shot) to ever catch mid-transition.
 - **`hyprctl dispatch <name> <args>` on this machine requires Lua-call syntax, not classic hyprctl space-separated args** — e.g. moving the cursor is NOT `hyprctl dispatch movecursor 100 100`, it needs the Hyprlang/lua-config-aware form. Don't fight this to work around a UI test; prefer a dedicated IPC/debug method in the QML service instead of trying to simulate mouse input via hyprctl.
+- **Toasts are not reachable via computer-use/accessibility-tree automation** — they're bare wlroots layer-shell surfaces (PanelWindow with `WlrLayershell.namespace`), not normal application windows, so there's no accessibility tree or window handle to click. Verify click-behavior changes via the plugin's own IPC (`invokeLast`, etc.) plus on-disk side effects, not simulated mouse clicks.
 
 ## Verification quick path
 
