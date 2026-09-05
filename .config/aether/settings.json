@@ -1,0 +1,8 @@
+{
+  "includeNeovim": false,
+  "includeVscode": false,
+  "includeZed": false,
+  "includedApps": {},
+  "selectedNeovimConfig": "",
+  "wallpaperFolder": "/home/wils/Wallpapers"
+}
