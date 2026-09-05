@@ -1,0 +1,831 @@
+{
+	"devices": {
+		"vi": {
+			"1": {
+				"name": "Game Virtual Input (Pulse)",
+				"nick": "Game",
+				"description": "Game",
+				"device_type": "sink",
+				"device_class": "virtual",
+				"volume": [
+					100,
+					100
+				],
+				"mute": false,
+				"flags": 0,
+				"external": false,
+				"primary": false,
+				"channels": 2,
+				"channel_list": [
+					"FL",
+					"FR"
+				],
+				"connections": {
+					"a": {
+						"1": {
+							"nick": "Speaker",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Arena 7",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"3": {
+							"nick": "H. Phones",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					},
+					"b": {
+						"1": {
+							"nick": "Mic",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Stream",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					}
+				},
+				"selected_channels": [
+					true,
+					true
+				]
+			},
+			"2": {
+				"name": "Media Virtual Input (Pulse)",
+				"nick": "Media",
+				"description": "Media",
+				"device_type": "sink",
+				"device_class": "virtual",
+				"volume": [
+					60,
+					60
+				],
+				"mute": false,
+				"flags": 0,
+				"external": false,
+				"primary": false,
+				"channels": 2,
+				"channel_list": [
+					"FL",
+					"FR"
+				],
+				"connections": {
+					"a": {
+						"1": {
+							"nick": "Speaker",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Arena 7",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"3": {
+							"nick": "H. Phones",
+							"state": true,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					},
+					"b": {
+						"1": {
+							"nick": "Mic",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Stream",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					}
+				},
+				"selected_channels": [
+					true,
+					true
+				]
+			},
+			"3": {
+				"name": "Music Virtual Input (Pulse)",
+				"nick": "Music",
+				"description": "Music",
+				"device_type": "sink",
+				"device_class": "virtual",
+				"volume": [
+					66,
+					66
+				],
+				"mute": false,
+				"flags": 0,
+				"external": false,
+				"primary": false,
+				"channels": 2,
+				"channel_list": [
+					"FL",
+					"FR"
+				],
+				"connections": {
+					"a": {
+						"1": {
+							"nick": "Speaker",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Arena 7",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"3": {
+							"nick": "H. Phones",
+							"state": true,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					},
+					"b": {
+						"1": {
+							"nick": "Mic",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Stream",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					}
+				},
+				"selected_channels": [
+					true,
+					true
+				]
+			},
+			"4": {
+				"name": "Auxillary Virtual Input (Pulse)",
+				"nick": "Aux",
+				"description": "Aux",
+				"device_type": "sink",
+				"device_class": "virtual",
+				"volume": [
+					100,
+					100
+				],
+				"mute": false,
+				"flags": 0,
+				"external": false,
+				"primary": false,
+				"channels": 2,
+				"channel_list": [
+					"FL",
+					"FR"
+				],
+				"connections": {
+					"a": {
+						"1": {
+							"nick": "Speaker",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Arena 7",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"3": {
+							"nick": "H. Phones",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					},
+					"b": {
+						"1": {
+							"nick": "Mic",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Stream",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					}
+				},
+				"selected_channels": [
+					true,
+					true
+				]
+			},
+			"5": {
+				"name": "Chat Virtual Input (Pulse)",
+				"nick": "Chat",
+				"description": "Chat",
+				"device_type": "sink",
+				"device_class": "virtual",
+				"volume": [
+					100
+				],
+				"mute": false,
+				"flags": 0,
+				"external": false,
+				"primary": false,
+				"channels": 1,
+				"channel_list": [
+					"MONO"
+				],
+				"connections": {
+					"a": {
+						"1": {
+							"nick": "Speaker",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Arena 7",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"3": {
+							"nick": "H. Phones",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					},
+					"b": {
+						"1": {
+							"nick": "Mic",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true
+							],
+							"output_sel_channels": [
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Stream",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					}
+				},
+				"selected_channels": [
+					true
+				]
+			}
+		},
+		"hi": {
+			"1": {
+				"name": "alsa_input.pci-0000_c1_00.6.analog-stereo",
+				"nick": "Mic",
+				"description": "Ryzen HD Audio Controller Analog Stereo",
+				"device_type": "source",
+				"device_class": "hardware",
+				"volume": [
+					0,
+					0
+				],
+				"mute": false,
+				"flags": 0,
+				"external": false,
+				"primary": null,
+				"channels": 2,
+				"channel_list": [
+					"FL",
+					"FR"
+				],
+				"connections": {
+					"a": {
+						"1": {
+							"nick": "Speaker",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Arena 7",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"3": {
+							"nick": "H. Phones",
+							"state": false,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					},
+					"b": {
+						"1": {
+							"nick": "Mic",
+							"state": true,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						},
+						"2": {
+							"nick": "Stream",
+							"state": true,
+							"latency": null,
+							"auto_ports": true,
+							"input_sel_channels": [
+								true,
+								true
+							],
+							"output_sel_channels": [
+								true,
+								true
+							],
+							"port_map": [],
+							"route_volume": 100,
+							"use_loopback": false
+						}
+					}
+				},
+				"selected_channels": [
+					true,
+					true
+				]
+			}
+		},
+		"a": {
+			"1": {
+				"name": "alsa_output.pci-0000_c1_00.6.analog-stereo",
+				"nick": "Speaker",
+				"description": "Ryzen HD Audio Controller Analog Stereo",
+				"device_type": "sink",
+				"device_class": "hardware",
+				"volume": [
+					100,
+					100
+				],
+				"mute": true,
+				"flags": 0,
+				"external": false,
+				"primary": null,
+				"channels": 2,
+				"channel_list": [
+					"FL",
+					"FR"
+				],
+				"connections": {
+					"a": {},
+					"b": {}
+				},
+				"selected_channels": [
+					true,
+					true
+				]
+			},
+			"2": {
+				"name": "bluez_output.28_9A_4B_B2_97_6B.1",
+				"nick": "Arena 7",
+				"description": "SteelSeries Arena 7",
+				"device_type": "sink",
+				"device_class": "hardware",
+				"volume": [
+					100,
+					100
+				],
+				"mute": true,
+				"flags": 0,
+				"external": false,
+				"primary": null,
+				"channels": 2,
+				"channel_list": [
+					"FL",
+					"FR"
+				],
+				"connections": {
+					"a": {},
+					"b": {}
+				},
+				"selected_channels": [
+					true,
+					true
+				]
+			},
+			"3": {
+				"name": "bluez_output.7C_F3_4D_85_6B_C2.1",
+				"nick": "H. Phones",
+				"description": "Tyler\u2019s AirPods Pro - Find My",
+				"device_type": "sink",
+				"device_class": "hardware",
+				"volume": [
+					100,
+					100
+				],
+				"mute": false,
+				"flags": 0,
+				"external": false,
+				"primary": null,
+				"channels": 2,
+				"channel_list": [
+					"FL",
+					"FR"
+				],
+				"connections": {
+					"a": {},
+					"b": {}
+				},
+				"selected_channels": [
+					true,
+					true
+				]
+			}
+		},
+		"b": {
+			"1": {
+				"name": "Microphone Virtual Output (Pulse)",
+				"nick": "Mic",
+				"description": "Mic",
+				"device_type": "source",
+				"device_class": "virtual",
+				"volume": [
+					100
+				],
+				"mute": false,
+				"flags": 0,
+				"external": false,
+				"primary": false,
+				"channels": 1,
+				"channel_list": [
+					"MONO"
+				],
+				"connections": {
+					"a": {},
+					"b": {}
+				},
+				"selected_channels": [
+					true
+				]
+			},
+			"2": {
+				"name": "Stream Virtual Out (Pulse)",
+				"nick": "Stream",
+				"description": "Stream",
+				"device_type": "source",
+				"device_class": "virtual",
+				"volume": [
+					100,
+					100
+				],
+				"mute": false,
+				"flags": 0,
+				"external": false,
+				"primary": false,
+				"channels": 2,
+				"channel_list": [
+					"FL",
+					"FR"
+				],
+				"connections": {
+					"a": {},
+					"b": {}
+				},
+				"selected_channels": [
+					true,
+					true
+				]
+			}
+		}
+	},
+	"vumeters": true,
+	"cleanup": true,
+	"tray": false,
+	"layout": "Bars",
+	"window_width": 800,
+	"window_height": 600
+}
