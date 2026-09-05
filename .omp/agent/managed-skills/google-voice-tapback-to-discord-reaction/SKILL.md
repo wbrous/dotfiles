@@ -1,59 +1,61 @@
 ---
 name: google-voice-tapback-to-discord-reaction
-description: "Use when working on the google-voice-ws Discord bridge (examples/discord-bridge/) and forwarding Google Voice's iMessage-style tapback notification texts (Liked/Loved/Disliked \"…\" or Reacted emoji to \"…\") — map them to a Discord message reaction on the originally-forwarded message instead of posting them as new DM text. Also covers caching BOTH directions of forwarded messages, formatting Discord replies as SMS block-quotes when forwarding Discord→Voice, phone-typed .reply/.edit commands that control the Discord side of the bridge (with a \"no quotes = latest, direction-aware\" fallback), the Dockerfile layer-ordering fix keeping bunx playwright install cached across source edits, the library-level (src/client.ts) fix for batched-poll-tick message ordering, and the poll-loop initial-empty-snapshot test-fixture gotcha."
+description: "Use when working on the google-voice-ws Discord bridge (examples/discord-bridge/) and forwarding Google Voice's iMessage-style tapback notification texts (Liked/Loved/Disliked \"…\" or Reacted emoji to \"…\") — map them to a Discord message reaction on the originally-forwarded message instead of posting them as new DM text. Also covers caching BOTH directions of forwarded messages, formatting Discord replies as SMS block-quotes when forwarding Discord→Voice, phone-typed .reply/.edit commands that control the Discord side of the bridge (with a \"no quotes = latest, direction-aware\" fallback), forwarding Discord message edits to the phone as \"edit: old\\n\\nnew\" notices, the Dockerfile layer-ordering fix keeping bunx playwright install cached across source edits, the library-level (src/client.ts) fix for batched-poll-tick message ordering, and the poll-loop initial-empty-snapshot test-fixture gotcha."
 ---
 
-## Tapback → Discord reaction mapping
+## Message cache (`recentForwarded` in `index.ts`)
 
-In `examples/discord-bridge/index.ts`, Google Voice's iMessage-style tapback texts (`Liked "…"`, `Loved "…"`, `Disliked "…"`, `Reacted <emoji> to "…"`) are parsed and mapped to a Discord `message.react(emoji)` on the *originally forwarded* message instead of being posted as new DM text. The quoted text (which can be multi-line) is matched against a bounded (`MAX_RECENT_FORWARDED = 50`) history array `recentForwarded: Array<{ text: string; message: Message }>` via `findForwardedMessage(text)` (exact-trim match, searched newest-first). If no match is found, it falls back to sending the tapback text as plain content.
+Bounded array of `{ text, message }`, appended by `rememberForwarded()` on **every** successful forward, both directions:
+- Voice → Discord: after `dm.send(body)`.
+- Discord → Voice: after `voice.sendMessage(...)` succeeds (was originally missing — a Voice tapback on a message *you* sent from Discord wouldn't resolve until this was added).
 
-**Critical:** `rememberForwarded(text, message)` must be called on *every* successful forward in *both* directions:
-- Voice → Discord (`voice.on("messageCreate")`): after `dm.send(body)`.
-- Discord → Voice (`discord.on("messageCreate")`): after `voice.sendMessage(...)`, caching the *original Discord `Message` object* the user sent.
+`findForwardedMessage(text)` does an exact-trim match scanning newest-first. `updateRememberedText(message, newText)` mutates a cache entry's `text` in place, keyed by `message.id` — used both when `.edit`-ing a message and when the Discord user edits their own message (keeps the cache in sync with the current displayed content).
 
-Missing the outbound-direction caching means a tapback on a message *you* sent from Discord (not one forwarded from the phone) silently fails to find a target and falls through to plain-text (which is invisible in your own outbound thread) — this was a real reported bug, root-caused as exactly this omission.
+## Tapback → reaction mapping
 
-## Discord reply → SMS quote formatting (Discord → Voice)
+`parseReactionMessage(text)` matches `Liked "…"` / `Loved "…"` / `Disliked "…"` / `Reacted X to "…"` (multi-line quoted content included). On a match, `findForwardedMessage(reaction.quoted)` resolves the target; `target.react(emoji)` applies it. No match or no cached target → falls through and sends the tapback text as a plain message (never silently drops it).
 
-When the bridged user replies to a Discord message, `buildReplyQuote(message)` fetches `message.channel.messages.fetch(message.reference.messageId)` and formats every line of the referenced message's content as `> line` (iMessage/SMS block-quote style), then prepends it to the reply body with a blank line separator:
-```
-> original line one
-> original line two
+## Discord reply quoting (Discord → Voice)
 
-reply text here
-```
-The *full* quoted+body text (not just the raw reply) is what gets sent to the phone via `voice.sendMessage` AND cached via `rememberForwarded`, so a tapback reaction on that message later matches on the exact SMS text delivered (which includes the quote block).
+`buildReplyQuote(message)`: if `message.reference?.messageId` is set, fetches the referenced message and returns its content with every line prefixed `> `. The final SMS text sent to the phone is `` `${quote}\n\n${rawText}` `` when a quote exists. A reply with **no** additional text (e.g. replying to just add an attachment) is still allowed through — the emptiness check is `!rawText && !discordAttachment && !replyQuote`, not `!text`.
 
 ## `.reply` / `.edit` phone commands (Voice → Discord)
 
-Typed into the Messages app, these control the Discord side from the phone:
+Typed into the Messages app on the phone, parsed by `parseVoiceCommand(text)`:
 ```
 .reply "quoted target text"
-the reply body (rest of the message, can be multi-line)
+the reply body (rest of the message, after the first newline)
 ```
+`.edit` has the same shape but calls `target.edit(body)` instead of `target.reply(body)`. Regex: `/^\.(reply|edit)(?:\s+"([^"]*)")?\s*$/i` on the first line only; `body` is everything after the first `\n`, trimmed (a blank line between command and body is fine — `.trim()` absorbs it).
+
+**Direction-aware default target when quotes are omitted** — this is the part that's easy to get wrong:
+- `.reply` with no quotes → `latestFromUser()`: the most recent `recentForwarded` entry authored by the bridged Discord user (`config.dmUserId`). Reasoning: a bare `.reply` should always target what the *other person* said, even if the bridge itself sent a message more recently (e.g. an earlier `.reply`/forward).
+- `.edit` with no quotes → `latestFromSelf()`: the most recent entry authored by the bridge's own account (`discord.user.id`). Reasoning: Discord only allows editing your own messages, so defaulting to the user's message would always fail.
+- Do **not** collapse these into one `latestForwarded()` — that was the original (buggy) implementation and picks the wrong author depending on which direction last fired.
+- `.edit` targeting a message the Discord user sent will still fail at the Discord API level (can't edit someone else's message) — this is a genuine platform restriction, not a bug to work around; the existing try/catch just logs it.
+
+## Discord message edits → phone
+
+`discord.on("messageUpdate", async (oldMessage, newMessage) => ...)` forwards a Discord-side edit to the phone as:
 ```
-.edit "quoted target text"
-the new content
+edit: their old message
+
+their new message
 ```
-Parsed by `parseVoiceCommand(text)`: splits on the first `\n`, matches the first line against `/^\.(reply|edit)(?:\s+"([^"]*)")?\s*$/i`, treats everything after as the body (`.trim()`'d — a blank line between command and body, e.g. `.reply\n\nHello`, is fine). Returns `null` for anything malformed or missing a body line.
+Same author/self/channel-type filtering as the `messageCreate` handler. Skip if `oldMessage.content === newMessage.content` (an embed unfurling fires `messageUpdate` with unchanged text). After a successful send, call `updateRememberedText(newMessage, newText)` so subsequent `.reply`/`.edit`/reactions targeting that message match the *current* text, not the stale pre-edit text.
 
-**Quoted-target lookup** uses the same `findForwardedMessage` cache as tapbacks (works across both directions).
+## Dockerfile playwright/cache ordering
 
-**No-quote default target is direction-aware, NOT a single "latest message" pointer** — this was a real bug fix:
-- `.reply` with no quotes → `latestFromUser()`: most recent cached message *authored by the bridged Discord user*. Ensures replying always targets what the other person said, even if you (the bridge) sent something more recently.
-- `.edit` with no quotes → `latestFromSelf()`: most recent cached message *authored by the bridge's own Discord account* (`discord.user?.id`). Required because Discord only allows editing your own messages — defaulting to the absolute-latest message (regardless of author) would frequently pick a message you can't edit, which is exactly the bug reported ("If the discord user sends a message and I do .edit, it doesn't work").
-- `.edit` targeting a message NOT authored by the bridge (whether via explicit quote or the old naive "latest overall" default) will throw at the Discord API level — this is an intentional, uncircumventable Discord platform restriction, not a bug to fix. The existing try/catch just logs it.
+`RUN bunx playwright install --with-deps chromium` (~4 min) must come **before** `COPY examples/discord-bridge/index.ts` / `COPY examples/discord-bridge/bin`, right after `RUN bun install` for the bridge's deps. It only depends on `package.json`/lockfile, not source — if placed after the source `COPY`s, every source edit busts Docker's cache for the expensive layer too, since Docker invalidates a layer and everything below it once an earlier layer changes.
 
-`.edit` also updates the cache entry's text via `updateRememberedText(message, newText)` (matches by `message.id`) so subsequent commands/reactions referencing the *new* text can find it.
+## Library-level poll ordering fix (`src/client.ts`)
 
-If a command's target isn't found in the cache, it falls through and sends the raw command text as plain content (same fallback pattern as tapback reactions).
+`GoogleVoiceClient`'s poll `tick()` originally emitted `messageCreate` immediately while iterating the `next` Map, which is built in raw `listThreads()` response order — not guaranteed chronological. Two SMS sent back-to-back between polls could be emitted (and thus DM'd to Discord) in the wrong order.
 
-## Dockerfile playwright-install cache ordering
+Fix: collect new events into an array, `sort((a, b) => a.timestampMs - b.timestampMs)`, then emit `messageCreate` for each in order. `messageUpdate` still emits inline during the same scan (order doesn't matter there since it's per-id, not a race between distinct new messages).
 
-`bunx playwright install --with-deps chromium` (~4 min, downloads Chromium) MUST come immediately after `RUN bun install` (bridge deps) and BEFORE `COPY examples/discord-bridge/tsconfig.json/index.ts/bin`. If placed after those `COPY`s, Docker invalidates the playwright layer (and everything below it) on every source-code edit, since Docker layer caching invalidates a layer and all subsequent layers once any earlier layer's input changes. Symptom: every `docker compose build` after an `index.ts` edit re-downloads Chromium (~4-5 min) even though playwright only actually depends on `package.json`.
+**Test-fixture gotcha**: the poll loop's "first snapshot" branch checks `this.snapshot.size === 0` (the *old* snapshot, before this tick's data is applied) to decide whether to emit `ready` instead of diffing. If your first stubbed `listThreads()` tick returns a thread with an **empty** events array, `next` stays size 0, so `this.snapshot` stays empty after that tick too — and the *next* tick will ALSO take the "first snapshot" branch (re-emitting `ready`, never diffing/emitting `messageCreate`), because `this.snapshot.size === 0` is still true. Regression tests for batched-message-ordering must seed tick 1 with a **non-empty** thread (e.g. one already-seen event) so tick 2 actually reaches the diff/sort path.
 
-## Library-level: batched-poll-tick message ordering (src/client.ts)
+## Docker rebuild reminder
 
-The poll loop's `tick()` builds a `Map<string, ThreadEvent>` from `listThreads()` response order and previously emitted `messageCreate` immediately per Map entry. Google's `api2thread/list` doesn't guarantee chronological order within one response, so if two SMS land between polls, they could emit (and thus get forwarded to Discord) in reverse order. Fixed by collecting new-event entries into an array, sorting by `timestampMs` ascending, THEN emitting `messageCreate` in that order. `messageUpdate` still emits inline per-id (no batching issue there since it's not a race between distinct new messages).
-
-**Test-fixture gotcha:** the poll loop's `snapshot.size === 0` check is used both to detect "first tick ever" (emit `ready`, no diffing) AND implicitly relies on the *first* tick actually returning non-empty data. If a test's first stubbed `listThreads()` call returns an empty-events thread (`[makeThread([])]`), `this.snapshot` stays size 0 after that tick, so the *second* tick is ALSO treated as "first snapshot" (emits `ready` again, skips all diffing) instead of diffing against the empty baseline — silently producing zero `messageCreate` events and a hanging test (looks like a 5s timeout, not an assertion failure). Fix: make the first stubbed tick return at least one already-seen event so `snapshot.size > 0` before the tick under test.
+The Discord bridge example depends on the library via `bun link` inside the Docker image; when running example against local dev host (not Docker), always `bun run build` in the repo root after any `src/*.ts` change before testing the bridge, since it consumes `dist/`.
