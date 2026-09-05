@@ -1,41 +1,30 @@
 ---
 name: google-voice-tapback-to-discord-reaction
-description: "Use when working on the google-voice-ws discord-bridge example and forwarding Google Voice's iMessage-style tapback notification texts (Liked/Loved/Disliked \"…\" or Reacted emoji to \"…\") — map them to a Discord message reaction on the originally-forwarded message instead of posting them as new DM text."
+description: "Use when working on the google-voice-ws Discord bridge (examples/discord-bridge/) and forwarding Google Voice's iMessage-style tapback notification texts (Liked/Loved/Disliked \"…\" or Reacted emoji to \"…\") — map them to a Discord message reaction on the originally-forwarded message instead of posting them as new DM text. Covers caching BOTH directions of forwarded messages, not just Voice→Discord."
 ---
 
-## Problem
+## What this is
 
-Google Voice (bridging iMessage tapbacks over SMS) sends reaction notifications as plain SMS text in this exact format:
+Google Voice (relaying iMessage tapbacks over SMS) sends plain-text notification messages instead of real reaction events:
 
-```
-Liked "Thanks"
-Loved "U set a range?"
-Disliked ":>"
-Reacted 🥺 to "🤔🤔🤔"
-```
+- `Liked "…"` / `Loved "…"` / `Disliked "…"`
+- `Reacted <emoji> to "…"`
 
-Quotes are curly (`“” `U+201C/201D), and the quoted content can span multiple lines:
+The quoted part can span multiple lines. In `examples/discord-bridge/index.ts` these should be turned into a real Discord reaction on the message being referenced, not posted as their own DM text.
 
-```
-Liked "HFJH
-JDDD
-DJDJKFKF
-JDDDK
-EJDKFF"
-```
+## Implementation
 
-Naively forwarding these to Discord as plain messages is noisy — the user wants them rendered as a Discord reaction on the original forwarded message instead.
+- `parseReactionMessage(text)` — regex-matches the four forms above (quote char class `[""]`/`[""]`, `[\s\S]*` for multi-line body) and returns `{ emoji, quoted }`. Label→emoji map: `Liked → 👍`, `Loved → 💖`, `Disliked → 👎`; `Reacted <emoji> to "…"` uses the captured emoji literally.
+- `recentForwarded`: a bounded (50-entry) array of `{ text, message: Message }`, with `rememberForwarded`/`findForwardedMessage` (exact-trim match, most-recent-first) doing the lookup.
+- In the `voice.on("messageCreate")` handler (Voice → Discord), when the incoming text has no attachment, try `parseReactionMessage` first; on a hit, look up `findForwardedMessage(reaction.quoted)` and call `target.react(emoji)` instead of `dm.send`. Fall back to a normal send if no match is found.
 
-## Solution (implemented in `examples/discord-bridge/index.ts`)
+## Critical bug already hit here: cache BOTH directions
 
-1. **Parse the pattern** with one regex per shape, quote class `[“"]([\s\S]*)[”"]` (dotall via `[\s\S]*` for multi-line):
-   - `^(Liked|Loved|Disliked) <quoted>$` → map label to emoji (`Liked`→👍, `Loved`→💖, `Disliked`→👎).
-   - `^Reacted (\S+) to <quoted>$` → use the captured emoji literally.
-2. **Track forwarded messages**: maintain a small bounded (e.g. 50-entry) history of `{ text, message }` for every plain-text message this bridge forwards Voice→Discord. Only remember text sends, not attachment sends (reactions target text content).
-3. On a new Voice message: if it has no attachment and matches the reaction pattern, look up the quoted text (trimmed) in the recent-forwarded history. If found, call `message.react(emoji)` and return early — do NOT send a new Discord message. If no match is found, fall back to sending the raw notification text normally (better than silently dropping it).
+The tapback target message is not always something *received* from the phone — it's just as often a message *you sent* from Discord to the phone (Discord → Voice), which the phone user then tapped-back on via iMessage. If `rememberForwarded` is only called in the Voice→Discord handler, reactions to your own outbound messages silently no-op (falls through to the "not found" branch, which for a `Loved "…"` message on your own thread produces no visible effect since it's not re-sent as new text either way — easy to miss in testing).
 
-## Gotchas
+Fix: also call `rememberForwarded(text, message)` in the `discord.on("messageCreate")` (Discord → Voice) handler, right after a successful `voice.sendMessage(...)`, caching the original Discord `Message` object (only when `text` is non-empty). Both directions must feed the same cache for tapback matching to work symmetrically.
 
-- Must check `!attachment` before attempting reaction-pattern parsing — MMS captions could coincidentally look similar but should never be treated as tapbacks.
-- `discord.js-selfbot-youtsuho-v13` exports `Message` as a type — `import { Client, type Message } from "discord.js-selfbot-youtsuho-v13"` for the history array's type.
-- Verify parsing logic with a standalone `eval` script (not `tsc`/build) since the package has unrelated pre-existing transitive dependency resolution errors (`ffmpeg-static`, `chromium-bidi`) that block a full bundle build — those are irrelevant to this feature; `tsc --noEmit -p .` is sufficient to confirm type correctness.
+## Verification
+
+- `bunx tsc --noEmit -p examples/discord-bridge` after any change (project has no separate build target here worth invoking through `bun build`, which pulls in unrelated broken deps like `chromium-bidi`/`ffmpeg-static` from transitive playwright/prism-media packages — those failures are pre-existing and unrelated to this feature).
+- Standalone eval of `parseReactionMessage` against the five example message shapes (all three label forms, the emoji-react form, and a multi-line liked message) plus one non-matching plain message, to confirm regex correctness without needing a live Discord/Voice session.
