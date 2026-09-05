@@ -1,0 +1,1 @@
+/home/wils/.omp/omarchy-theme-sync.sh
