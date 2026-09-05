@@ -1,59 +1,54 @@
 ---
 name: google-voice-tapback-to-discord-reaction
-description: "Use when working on the google-voice-ws Discord bridge (examples/discord-bridge/) and forwarding Google Voice's iMessage-style tapback notification texts (Liked/Loved/Disliked \"…\" or Reacted emoji to \"…\") — map them to a Discord message reaction on the originally-forwarded message instead of posting them as new DM text. Covers caching BOTH directions of forwarded messages, not just Voice→Discord. Also covers formatting Discord replies as SMS block-quotes when forwarding Discord→Voice, and the Dockerfile layer-ordering fix keeping bunx playwright install cached across source edits."
+description: "Use when working on the google-voice-ws Discord bridge (examples/discord-bridge/) and forwarding Google Voice's iMessage-style tapback notification texts (Liked/Loved/Disliked \"…\" or Reacted emoji to \"…\") — map them to a Discord message reaction on the originally-forwarded message instead of posting them as new DM text. Also covers caching BOTH directions of forwarded messages, formatting Discord replies as SMS block-quotes when forwarding Discord→Voice, phone-typed .reply/.edit commands that control the Discord side of the bridge (with a \"no quotes = target latest message\" fallback), and the Dockerfile layer-ordering fix keeping bunx playwright install cached across source edits."
 ---
 
-## Tapback → Discord reaction (Voice → Discord)
+## Bidirectional forwarded-message cache
 
-Google Voice sends iMessage-style tapback notifications as plain SMS text:
-`Liked "..."`, `Loved "..."`, `Disliked "..."`, `Reacted <emoji> to "..."`.
-The quoted content can be multi-line (curly/straight quotes both occur).
+`recentForwarded: Array<{ text: string; message: Message }>` (bounded, `MAX_RECENT_FORWARDED = 50`) in `examples/discord-bridge/index.ts` caches messages from **both** directions:
+- Voice → Discord: `rememberForwarded(body, sentDmMessage)` after `dm.send(body)`.
+- Discord → Voice: `rememberForwarded(text, message)` after a successful `voice.sendMessage(...)` — `text` here is the *full* sent content (including any reply-quote prefix, see below), because that's what a later Voice tapback will quote back.
 
-- `parseReactionMessage(text)` in `examples/discord-bridge/index.ts` regexes
-  these four shapes out and returns `{ emoji, quoted }`.
-- `REACTION_LABEL_EMOJI` maps `Liked`→👍, `Loved`→💖, `Disliked`→👎; a literal
-  `Reacted <emoji> to "..."` just reuses the emoji verbatim.
-- `rememberForwarded(text, message)` keeps a bounded (50-entry) history of
-  `{ text, message }` for exact-match lookup by `findForwardedMessage`.
-- **Critical:** cache BOTH directions — Voice→Discord forwards AND
-  Discord→Voice sends (`discord.on("messageCreate")` after a successful
-  `voice.sendMessage`, using the same fully-composed `text` that was sent,
-  not just the raw Discord `message.content`). Missing the outbound cache
-  means reacting to a message *you* sent from Discord silently falls back to
-  plain text with no visible effect (looks like a no-op bug, not a crash).
-- When attachment-only reaction lookups fail, code falls back to sending the
-  reaction text as a plain message rather than crashing — intentional, not a
-  bug to "fix" defensively.
+`findForwardedMessage(text)` searches newest-first by exact trimmed text match. `latestForwarded()` returns the single most recent entry across both directions — used as the fallback target when a phone command omits its quoted argument.
 
-## Reply quoting (Discord → Voice)
+`updateRememberedText(message, newText)` mutates a cache entry's `.text` in place by `message.id` — needed after `.edit` changes a message's displayed content, so a *later* command/reaction targets the new text, not the stale one.
 
-When the bridged Discord user replies to a message, `buildReplyQuote(message)`
-fetches `message.reference.messageId` via `message.channel.messages.fetch`,
-then formats every line of the referenced message's content as an SMS-style
-block quote (`> line`), joined with `\n`, and prepends it to the reply text
-with a blank line separator:
+## Tapback → Discord reaction mapping
 
+Google Voice sends tapback acknowledgements as plain SMS/MMS text in this exact shape:
 ```
-> quoted line one
-> quoted line two
-
-actual reply text
+Liked "quoted text"
+Loved "quoted text"
+Disliked "quoted text"
+Reacted 😂 to "quoted text"
 ```
+The quoted portion may be multi-line (real newlines inside the quotes, not escaped `\n`). `parseReactionMessage(text)` matches this and returns `{ emoji, quoted }`; `REACTION_LABEL_EMOJI` maps `Liked`→👍, `Loved`→❤️ (or similar), `Disliked`→👎, and `Reacted <emoji> to "..."` uses the literal emoji already in the text.
 
-The full quoted+reply string (not just the raw reply) is what's sent via
-`voice.sendMessage` AND cached in `rememberForwarded`, so a later tapback on
-that composite message still resolves correctly. An empty reply (e.g.
-replying with only an attachment) still sends the quote block alone rather
-than being treated as an empty/skippable message.
+In `voice.on("messageCreate")`, before falling through to normal-message forwarding: if there's no attachment, try `parseReactionMessage(body)` → `findForwardedMessage(reaction.quoted)` → `target.react(reaction.emoji)`. No match → falls through to sending as plain text (visible to the user as a literal `Liked "..."` DM, which is the correct degraded behavior, not a bug).
 
-## Dockerfile layer-cache ordering
+## Discord reply → SMS block-quote (Discord→Voice direction)
 
-`examples/discord-bridge/Dockerfile` builds the parent library then installs
-the bridge. `RUN bunx playwright install --with-deps chromium` (~4 min) MUST
-be placed immediately after `RUN bun install` (bridge deps) and BEFORE
-`COPY examples/discord-bridge/{tsconfig.json,index.ts,bin}` — Docker
-invalidates a layer and everything below it once an earlier layer changes,
-so if the Chromium install layer sits after the source COPYs, every source
-edit forces a full Chromium re-download even though that install only
-depends on `package.json`. Symptom: `docker compose build` staying slow
-(~5 min) on every rebuild despite `CACHED` showing for unrelated steps.
+`buildReplyQuote(message)`: if `message.reference?.messageId` is set, fetches the referenced message via `message.channel.messages.fetch(...)` and returns its content with every line prefixed `> ` (SMS/iMessage quoting convention). Prepended to the outbound text as `` `${quote}\n\n${rawText}` ``. A reply with no additional text still sends (quote-only), since `!rawText && !discordAttachment && !replyQuote` is the actual skip condition — not `!rawText` alone.
+
+## Phone-typed `.reply`/`.edit` commands (Voice→Discord direction)
+
+Typing into the Messages app on the phone can control the Discord side:
+```
+.reply "quoted target text"
+the reply body (rest of the message, can be multi-line)
+```
+```
+.edit "quoted target text"
+the new content
+```
+Quotes are **optional** — omitting them (`.reply\nbody text`) targets `latestForwarded()` instead of searching. `parseVoiceCommand(text)`: command must occupy the *entire first line* (`/^\.(reply|edit)(?:\s+"([^"]*)")?\s*$/i`); everything after the first `\n`, trimmed, is the payload — a command with no following payload line returns `null` (falls through to normal reaction/forward handling, so a stray literal `.reply` typo just gets sent as plain text).
+
+- `.reply` → `target.reply(command.body)`, then `rememberForwarded(command.body, sentMessage)` so later commands/reactions can reference the new reply.
+- `.edit` → `target.edit(command.body)`, then `updateRememberedText(target, command.body)`. Only succeeds if the bridge's own selfbot sent `target` (Discord only allows editing your own messages) — editing a message the *other* Discord user sent throws, caught by the existing try/catch and logged, not a special case to add.
+- Target-not-found (bad/stale quoted text) falls through to sending the raw command text as a normal message, mirroring the reaction-fallback pattern already used for `Liked "..."`.
+
+Command detection runs **before** `parseReactionMessage` in the `!attachment` branch, since both operate on `body` and are mutually exclusive by format.
+
+## Dockerfile playwright cache-busting (examples/discord-bridge/Dockerfile)
+
+`RUN bunx playwright install --with-deps chromium` (a ~4 minute layer) must sit **immediately after** `RUN bun install` for the bridge package and **before** `COPY examples/discord-bridge/tsconfig.json/index.ts/bin`. If it's placed after the source `COPY`s, every source edit invalidates the Docker layer cache for everything below it — including the expensive Chromium download — even though the install only actually depends on `package.json`/lockfile, not source files. Verify a fix by touching `index.ts` and rebuilding: the `bunx playwright install` step should show `CACHED`.
