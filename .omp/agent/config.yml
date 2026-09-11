@@ -18,6 +18,7 @@ modelRoles:
 defaultThinkingLevel: auto
 retry:
   fallbackChains: {}
+  waitForUsageReset: true
 externalThinking: true
 personality: pragmatic
 steeringMode: all
@@ -38,3 +39,6 @@ display:
   cacheMissMarker: true
   showTurnTime: true
   showTokenUsage: true
+  shimmer: kitt
+browser:
+  headless: false

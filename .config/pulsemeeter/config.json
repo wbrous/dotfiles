@@ -236,8 +236,8 @@
 				"device_type": "sink",
 				"device_class": "virtual",
 				"volume": [
-					66,
-					66
+					50,
+					50
 				],
 				"mute": false,
 				"flags": 0,
@@ -740,12 +740,12 @@
 			"3": {
 				"name": "bluez_output.7C_F3_4D_85_6B_C2.1",
 				"nick": "H. Phones",
-				"description": "Tyler\u2019s AirPods Pro - Find My",
+				"description": "Wils\u2019s AirPods Pro",
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					100,
-					100
+					87,
+					87
 				],
 				"mute": false,
 				"flags": 0,
