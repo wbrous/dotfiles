@@ -45,6 +45,20 @@
           "id": "omarchy.tray"
         },
         {
+          "id": "io.github.elevate08.qs-bitwarden-cli",
+          "twoFactorMethods": {
+            "wils@gir0fa.com": 1
+          },
+          "fingerprintUnlock": true
+        },
+        {
+          "id": "robzolkos.github",
+          "repositoryScope": "Owned and organizations",
+          "refreshIntervalSec": 900,
+          "iconAlwaysUnlit": true,
+          "linkBehavior": "Browser tab"
+        },
+        {
           "id": "omarchy.agents"
         },
         {

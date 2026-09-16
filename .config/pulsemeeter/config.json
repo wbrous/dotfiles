@@ -236,8 +236,8 @@
 				"device_type": "sink",
 				"device_class": "virtual",
 				"volume": [
-					50,
-					50
+					75,
+					75
 				],
 				"mute": false,
 				"flags": 0,
@@ -744,8 +744,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					87,
-					87
+					50,
+					50
 				],
 				"mute": false,
 				"flags": 0,
