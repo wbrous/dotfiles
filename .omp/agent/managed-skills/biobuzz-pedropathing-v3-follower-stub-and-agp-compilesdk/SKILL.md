@@ -1,81 +1,97 @@
 ---
 name: biobuzz-pedropathing-v3-follower-stub-and-agp-compilesdk
-description: "Use when the St-Marks-Robotics-FTC/Biobuzz repo's Gradle build fails/hangs, or when auto/teleop OpModes NPE on startup after calling Constants.create(hardwareMap) for the PedroPathing Follower — covers verifying gradle/AGP config against the sibling ../2026Testing repo (ground truth) instead of trusting git-log archaeology or prior \"fixed my builds\" commits, the stale compileSdkVersion 30 vs compileSdk 34 trap, why Biobuzz's pedro/ package (PedroPathing 3.0.0 revhub API: Follower.follow(Path)/.pose()/.manual(), com.pedropathing.api.Paths) must NOT be reverted to 2026Testing's classic ftc:2.1.2 pedroPathing/ package (different robot, incompatible API, 73 compile errors), and why Constants.create() returning null is a missing-hardware-calibration issue, not a build/tooling bug."
+description: "Use when the St-Marks-Robotics-FTC/Biobuzz repo's Gradle build fails/hangs, the Driver Station shows the Control Hub disconnected/blinking blue (RC app crash loop) despite good Wi-Fi, or auto/teleop OpModes NPE on startup after calling Constants.create(hardwareMap) for the PedroPathing Follower — covers verifying gradle/AGP config against the sibling ../2026Testing repo (ground truth) instead of trusting git-log archaeology or prior \"fixed my builds\" commits, the stale compileSdkVersion 30 vs compileSdk 34 trap, why Biobuzz's pedro/ package (PedroPathing 3.0.0 revhub API: Follower.follow(Path)/.pose()/.manual(), com.pedropathing.api.Paths) must NOT be reverted to 2026Testing's classic ftc:2.1.2 pedroPathing/ package (different robot, incompatible API, 73 compile errors), why Constants.create() returning null is a missing-hardware-calibration issue (not a build/tooling bug — do not fabricate PinpointConfig offsets/directions), the orphaned com.pedropathing:ftc:2.1.2 dependency that causes a real on-robot RC-app crash loop (Control Hub blinking blue = keep-alive timeout, NOT a Wi-Fi problem) via a silent Gradle transitive version bump (core:2.1.2 - 3.0.0) that bundles binary-incompatible ftc-2.1.2 bytecode into the same dex as core-3.0.0, verified/fixed by checking ./gradlew :TeamCode:dependencies --configuration debugRuntimeClasspath | grep pedropathing for a - version-bump arrow and deleting the unused implementation 'com.pedropathing:ftc:2.1.2' line once confirmed zero com.pedropathing.ftc.* imports exist in source, and the standalone SimpleMecanumTeleOp fallback OpMode (raw hardwareMap DcMotor mecanum drive, zero Follower/odometry dependency, motor names+directions sourced from pedro/Constants.java's driveConfig) used to get the robot driving before the Follower/localizer stack is calibrated."
 ---
 
-## Ground truth source for gradle/build config
+## REV Control Hub blinking blue + Driver Station disconnected despite good Wi-Fi
 
-Biobuzz has a sibling reference repo at `../2026Testing` (same org, same FTC SDK lineage) that
-represents a *known-working* build setup. When Biobuzz's Gradle build is broken, diff against
-`2026Testing` file-by-file instead of trusting git log messages or archaeology of past "fix"
-commits (some past commits, e.g. one literally titled "This fixed my builds", regressed things —
-git history in this repo is NOT a trustworthy source of truth on its own).
+Blinking blue (per REV's official LED blink code docs) = "keep alive has timed out" — the
+Robot Controller app stopped responding, NOT a Wi-Fi/network problem. If Wi-Fi is confirmed fine,
+suspect an RC app crash loop caused by the app code itself, not networking.
 
-Files to diff: `gradle/wrapper/gradle-wrapper.properties`, `build.gradle`, `gradle.properties`,
-`settings.gradle`, `build.common.gradle`, `build.dependencies.gradle`, `gradlew`/`gradlew.bat`,
-`*/build.gradle`, `*/src/main/AndroidManifest.xml`, `libs/`.
+### Root cause found in this repo: orphaned `com.pedropathing:ftc:2.1.2` dependency
 
-## The compileSdk trap
+Biobuzz's `build.dependencies.gradle` kept `implementation 'com.pedropathing:ftc:2.1.2'` from
+before the team migrated `BozoAuto`/`BozoTeleOp`/the Tuner OpModes to the newer PedroPathing v3
+API (`com.pedropathing:revhub:3.0.0` + `com.pedropathing:tuning:1.0.0`, using
+`com.pedropathing.api.Paths`, `Follower.follow(Path)`, `.pose()`, `.manual()`). No source file
+imports `com.pedropathing.ftc.*` anymore.
 
-`FtcRobotController/build.gradle` in Biobuzz had a stale `compileSdkVersion 30`, carried forward
-across years of copy-pasted FIRST SDK release merges, never bumped alongside the repo's pinned
-AGP version (8.13.2, which needs a modern compileSdk). `2026Testing`'s equivalent file uses
-`compileSdk 34`. Match Biobuzz's `compileSdk` to `2026Testing`'s value whenever build.gradle
-divergence is suspected.
+`ftc:2.1.2` transitively pulls `com.pedropathing:core:2.1.2`. Gradle's default "highest version
+wins" resolution silently bumps this to `3.0.0` (since `revhub`/`tuning` need it) — but the
+already-compiled `ftc-2.1.2.aar` bytecode was built against `core-2.1.2`'s API shape, a completely
+different major version (different `Follower` constructor, no `com.pedropathing.api` package,
+different `FollowerBuilder`/`FollowerConstants`/`MecanumConstants` types that don't exist in 3.0.0).
+Both class sets land in the same dex. The FTC SDK's OpMode annotation scanner (plus
+`dev.frozenmilk.sinister`'s scanner, pulled in by `tuning`) walks and verifies every class in the
+dex at boot to find `@TeleOp`/`@Autonomous` classes — this forces ART to verify the orphaned
+`ftc-2.1.2` classes against the real `core-3.0.0` runtime jar, throwing `VerifyError`/
+`NoSuchMethodError` → RC app crashes → restarts → crash loop → DS keep-alive times out → blinking
+blue. This happens even in a "successful" local Gradle build, because Gradle only resolves one
+`core` version for compilation/dexing — it never checks binary compatibility between artifacts
+compiled against different major versions of a shared transitive dependency.
 
-## Do NOT wholesale-copy source packages from 2026Testing
-
-Biobuzz and 2026Testing are DIFFERENT ROBOTS running different PedroPathing major versions:
-
-- `2026Testing` uses classic `com.pedropathing:ftc:2.1.2` API, package
-  `org.firstinspires.ftc.teamcode.pedroPathing` (`Constants.java`, `Tuning.java` only — no
-  Tuner OpModes), `Follower.followPath(...)`/`getPose()`-style calls.
-- Biobuzz uses PedroPathing **3.0.0** (`com.pedropathing:revhub:3.0.0` +
-  `com.pedropathing:tuning:1.0.0`, resolved from `maven { url
-  'https://repo.dairy.foundation/releases/' }`), package
-  `org.firstinspires.ftc.teamcode.pedro` (`Constants.java` + `procedures/*Tuner.java` — 8 Tuner
-  OpModes for PinpointLocalizer/OTOS/OctoQuad/ThreeWheel/TwoWheel/Mecanum/Foresight tuning),
-  `com.pedropathing.api.Paths`, `Follower.follow(Path)`/`.pose()`/`.manual(...)`.
-
-Deleting Biobuzz's `pedro/` package and its `revhub`/`tuning` maven deps to "match 2026Testing"
-produces ~73 compile errors (`BozoAuto.java`, `BozoTeleOp.java` call the 3.0.0-only API). If a
-diff between the two repos' `build.dependencies.gradle` or `pedro*/` packages shows up, that is
-expected divergence, not drift to "fix" — confirm by checking whether real OpModes
-(`auto/`, `teleop/`) actually import/use the extra deps/classes before touching them.
-
-## Constants.create() returning null is NOT a build bug
-
-`pedro/Constants.java`'s `create(HardwareMap)` method is a stub: `return null;` (with a comment
-`// return new Follower(Drivetrain, Localizer, Foresight);` showing unfinished intent). This
-compiles fine and NPEs at OpMode runtime. Real construction requires:
-
-```java
-new Follower(
-    new PinpointLocalizer(hardwareMap, pinpointConfig),   // com.pedropathing.revhub.localizers
-    new Mecanum(hardwareMap, driveConfig),                 // com.pedropathing.revhub.drivetrains
-    new Foresight(foresightConfig)                         // com.pedropathing.algorithm
-);
+**Diagnose:**
 ```
+./gradlew :TeamCode:dependencies --configuration debugRuntimeClasspath | grep pedropathing
+```
+Look for a `->` arrow on any `pedropathing:core` line (e.g. `core:2.1.2 -> 3.0.0`) — that arrow is
+the smoking gun for a silent transitive version conflict.
 
-`PinpointConfig` and `ForesightConfig` take a `Configuration<T>` functional interface (same
-lambda pattern already used for `MecanumConfig`: `new PinpointConfig(c -> { c.name.set(...); })`).
-BUT: decompiling `revhub-3.0.0.aar`'s `PinpointConfig` bytecode
-(`javap -c classes/com/pedropathing/revhub/localizers/PinpointConfig.class`) shows `name`,
-`xPodDirection`, `yPodDirection`, `xPodOffset`, `yPodOffset` are all `ConfigVar.required()` —
-**no library defaults exist**, and this repo has zero existing calibration data for them
-anywhere (verified via grep — no `pinpoint`/`odo` hardware-map references outside the Tuner
-files themselves). These values can only come from physically running the already-written
-`pedro/procedures/PinpointTuner.java` and `ForesightTuner.java` OpModes on the real robot.
+**Fix:** grep source for `import com.pedropathing.ftc.` first to confirm the artifact is truly
+unused, then delete the `implementation 'com.pedropathing:ftc:2.1.2'` line from
+`build.dependencies.gradle`. Verify the fix by re-running the dependency-tree grep (no more `->`
+arrows on `core`) and rebuilding (`BUILD SUCCESSFUL` alone doesn't prove the fix — the arrow's
+absence is the actual proof of a single consistent `core` version in the final dex).
 
-**Do not fabricate these numbers.** Guessing plausible-looking pod offsets/directions would
-compile and "look done" while silently driving the robot incorrectly — worse than leaving the
-NPE, since it fails silently instead of loudly. Treat this as a genuine missing hardware
-prerequisite: state it explicitly, do not synthesize calibration data, and wait for the tuner
-run to produce real numbers before wiring `Constants.create()`.
+## Ground truth for gradle/AGP pairing
 
-## Verify recipe
+`../2026Testing` (sibling repo, same org, same machine) is the authoritative source for stock
+Gradle/AGP/build-file config — NOT git-log archaeology of Biobuzz's own history (prior "fixed my
+builds" commits are unreliable; don't trust a managed skill built from git-log alone over a diff
+against this reference repo). Diff every top-level build file
+(`build.gradle`, `gradle.properties`, `settings.gradle`, `build.common.gradle`, `gradlew`/
+`gradlew.bat`, `gradle/wrapper/gradle-wrapper.properties`, manifests) against `2026Testing`'s copy
+before touching any of them.
 
-`JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :TeamCode:assembleDebug` — `BUILD SUCCESSFUL`
-is the deliverable proof for build/tooling fixes. This only proves compilation; it does NOT
-prove `Constants.create()` won't NPE at runtime — that requires the physical-hardware
-calibration step above.
+`FtcRobotController/build.gradle`'s `compileSdkVersion 30` (a stale leftover from years of
+copy-pasted FIRST SDK version bumps, never updated alongside AGP 8.13.2) is a confirmed, safe fix:
+replace with `2026Testing`'s `compileSdk 34`.
+
+## Do NOT blindly port 2026Testing's application code
+
+`2026Testing` is a **different robot** running PedroPathing's classic `ftc:2.1.2` API
+(`FollowerBuilder`, `FollowerConstants`, `MecanumConstants`, `PinpointConstants`, package
+`org.firstinspires.ftc.teamcode.pedroPathing`). Biobuzz's `pedro/` package and app code (`BozoAuto`,
+`BozoTeleOp`) were deliberately written against the newer `revhub`/`tuning` v3 API. Deleting
+Biobuzz's `pedro/` package and reverting `build.dependencies.gradle` to `2026Testing`'s dependency
+list produces 73 compile errors (`follower.follow(Path)`, `follower.pose()`, `follower.manual(...)`,
+`com.pedropathing.api.Paths` all vanish). Only port infrastructure/tooling config
+(gradle wrapper, AGP version, compileSdk) from `2026Testing`, never feature/API-level source code,
+without first confirming the two repos target the same PedroPathing major version.
+
+## `Constants.create()` returning null — missing hardware calibration, not a bug to code around
+
+`pedro/Constants.java`'s `create(HardwareMap)` is a stub (`return null;`) — a real NPE waiting to
+happen the instant any OpMode calls it. The real fix requires constructing
+`new Follower(localizer, drivetrain, algorithm)` via `PinpointLocalizer` + `Mecanum` + `Foresight`
+(decompiled from `core-3.0.0.jar`/`revhub-3.0.0.aar` — no sources jar published for `core:3.0.0`,
+use `javap -c` to check `ConfigVar.required()` vs `.of()` bytecode calls to know which fields need
+real values). `PinpointConfig`'s `name`, `xPodOffset`, `yPodOffset`, `xPodDirection`,
+`yPodDirection` are ALL `ConfigVar.required()` with zero library defaults, and this repo has no
+calibration data for them anywhere — they only come from physically running the already-existing
+`PinpointTuner`/`ForesightTuner` OpModes (`pedro/procedures/`) on the robot. Do not fabricate these
+numbers to make the stub "compile clean" — wrong calibration data drives the robot incorrectly
+while looking like it works. State the missing hardware prerequisite instead.
+
+## Fallback: SimpleMecanumTeleOp (no odometry, four wheels only)
+
+For "just make the robot drive, no Follower/Pedro at all" requests: a standalone `@TeleOp` OpMode
+that skips `Follower`/`Constants`/`Robot`/odometry entirely — grabs `frontLeft`/`frontRight`/
+`backLeft`/`backRight` directly via `hardwareMap.get(DcMotor.class, name)`, sets directions to match
+the actual wiring (left side `REVERSE`, right side `FORWARD` — pulled from `pedro/Constants.java`'s
+`driveConfig`, the one already-verified source of truth for this robot's physical motor wiring, not
+guessed), and does standard robot-centric mecanum mixing (`y + x + rx` / `y - x + rx` / `y - x - rx`
+/ `y + x - rx`, normalized to max 1.0, left-trigger slow mode). This is the right scope boundary
+when a full Follower-based drive isn't ready yet (e.g. blocked on physical odometry calibration) —
+ship the OpMode that only needs the four drive motors' hardware config names, nothing else.
