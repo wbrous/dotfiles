@@ -1,31 +1,72 @@
 ---
 name: omp-extension-codex-pet-terminal-image
-description: "Use when building or debugging an omp/oh-my-pi extension that renders animated terminal graphics (a \"pet\" widget, live status sprite, etc.) via setWidget + Kitty/Sixel/iTerm2 image protocols, or when replicating/porting OpenAI Codex CLI's /pets ambient-terminal-pet feature (codex-rs/tui/src/pets/*). Also covers the Bun.$ shell-result field-name trap (exitCode, not code) that silently breaks code !== 0 checks, and why ctx.ui.custom()'s \"overlay\" mode is unsuitable for a persistent ambient widget."
+description: "Use when building or debugging an omp/oh-my-pi extension that renders animated terminal graphics (a \"pet\" widget, live status sprite, etc.) via setWidget + Kitty/Sixel/iTerm2 image protocols, or when replicating/porting OpenAI Codex CLI's /pets ambient-terminal-pet feature (codex-rs/tui/src/pets/*). Also covers the Bun.$ shell-result field-name trap (exitCode, not code) that silently breaks code !== 0 checks, why ctx.ui.custom()'s \"overlay\" mode is unsuitable for a persistent ambient widget, and the correct technique for a widget that overlaps/floats over existing content instead of reserving a multi-row block."
 ---
 
-## Bun.$ shell result field is `exitCode`, not `code`
+## Context
 
-`await Bun.$\`cmd ${args}\`.quiet().nothrow()` returns `{ stdout, stderr, exitCode }`. There is no `code` field — destructuring `const { code } = await Bun.$...` silently gives `undefined`, so any `code !== 0` check is *always true*. This makes every shelled-out command look like it failed, and if the failure path is swallowed by `ctx.ui.notify(...)` (a no-op in headless/print mode), the bug is completely silent. Always destructure `exitCode`.
+Building `~/.omp/agent/extensions/codex-pet/index.ts`: an omp extension replicating OpenAI Codex CLI's ambient terminal pet feature (animated sprite reacting to agent state, rendered via terminal image protocols). Ported from `codex-rs/tui/src/pets/*` (PR #21206). Full behavior spec (row/frame/timing tables, notification kinds, lifetimes) is in that source — read it directly rather than re-deriving from memory.
 
-## setWidget vs ctx.ui.custom() for a persistent ambient widget
+## Gotcha: `Bun.$` shell result field is `exitCode`, not `code`
 
-`ctx.ui.setWidget(key, factory, {placement: "aboveEditor"|"belowEditor"})` reserves real layout rows equal to whatever height the component's `render(width)` returns. This is the *correct* primitive for a persistent, non-modal decoration (status bar, ambient pet, etc.) — it does NOT steal focus.
+```ts
+const { stdout, code } = await Bun.$`which magick`.quiet().nothrow();
+if (code === 0) { ... } // BUG: `code` is always `undefined`, so this never fires
+```
 
-`ctx.ui.custom(factory, {overlay: true, ...})` looks tempting for "true overlap with zero reserved space," but it is fundamentally a **modal dialog primitive**: `TUI.showOverlay()` (its underlying call) unconditionally does `this.setFocus(component)` AND `this.terminal.hideCursor()` synchronously when the overlay is created, and only restores the cursor once the overlay stack is empty. There is no "non-focus-stealing" option. Attempting to "steal then immediately restore focus" via the `onHandle` callback does NOT reliably work — verified by testing: typed keystrokes into the composer stopped landing while the overlay was active, even with an immediate `tui.setFocus(priorFocus)` call in `onHandle`. Don't use `custom()`/overlay for anything meant to coexist with normal typing.
+The correct field is `exitCode`. `code` silently exists as `undefined` on the result object (no TS error if the destructure target is loosely typed), so `code !== 0` is always true and `code === 0` is always false — every shell-command-success check silently takes the failure branch. This is exactly the kind of bug `ctx.ui.notify(...)` swallows in headless/print mode (no-op there), so it can pass a live smoke test with zero visible errors while doing nothing. Verify shell-command gated logic by checking its actual side effects on disk (e.g. did the expected cache files get created), not just "did the session run without printing an error."
 
-## Achieving "overlap" instead of "reserved block" within setWidget's real constraint
+## Gotcha: `ctx.ui.custom()` overlay mode is a modal primitive, not ambient decor
 
-If the requirement is "the pet should overlap the transcript, not push a multi-row gap above the composer," the fix is NOT to reserve `N` rows of blank filler lines (the way `pi-tui`'s own `Image.ts` direct-placement path does, via `RESERVED_IMAGE_ROW` blank lines — that pattern exists specifically so the image *does* occupy real scrollback-safe space). Instead:
+`ExtensionUIContext.custom(factory, { overlay: true, ... })` looks tempting for a persistent floating widget that shouldn't push a layout row — but tracing `TUI.showOverlay` in `packages/tui/src/tui.ts` shows it unconditionally:
+- calls `this.setFocus(component)` synchronously, and
+- calls `this.terminal.hideCursor()`, which only gets undone when `overlayStack.length === 0`.
 
-- Report **exactly one line** from `render(width)`.
-- Paint the full N-row-tall sprite by wrapping in `SAVE_CURSOR (\x1b7)` → move cursor up `(rows-1)` lines (`\x1b[{n}A`) → emit the image placement/sequence (single Kitty `a=p`, Sixel DCS, or iTerm2 sequence — all three protocols paint downward from cursor position in one command, so one `moveUp` + one sequence suffices) → `RESTORE_CURSOR (\x1b8)`.
-- For the Kitty **unicode-placeholder** grid path (`renderImage()` returns `result.lines`, an array of N real text-cell rows instead of one `sequence`), there's no single "paint N rows" primitive — join the rows with `\r\n` inside the same `SAVE_CURSOR ... RESTORE_CURSOR` wrapper; `RESTORE_CURSOR` guarantees exact position recovery regardless of intermediate `\r\n` cursor movement, so this is safe.
-- This visually paints over whatever was already rendered in the rows above (the transcript tail), using only 1 line of real layout footprint — the actual overlap behavior the user wants, achieved entirely within the `setWidget` contract (no focus-stealing, no cursor hiding).
+If you never call the `done()` callback (to keep the overlay open indefinitely) and try to hack around the focus steal by calling `tui.setFocus(priorFocus)` from the `onHandle` callback, this does NOT reliably survive — confirmed by live testing: typed keystrokes stopped reaching the composer even after this "restore" hack. `custom()`/`showOverlay` is fundamentally a modal-picker primitive (dialogs, pickers); do not repurpose it for always-on ambient UI. Use `ctx.ui.setWidget(key, factory, { placement: "aboveEditor" | "belowEditor" })` instead for persistent decorations — it does not touch focus or cursor visibility.
 
-## Command surface: prefer a single command name
+## Technique: overlap instead of reserving a multi-row block
 
-When porting a feature whose upstream CLI names a command `/pets` with an alias `/pet` (or vice versa), don't automatically register both. If asked to trim it down, just remove `pi.registerCommand("pets", ...)` and keep the one canonical name (`pet`), pointing both at the same handler function was pointless duplication once only one name is wanted.
+`setWidget` reserves exactly as many terminal rows as `Component.render(width)` returns. A naive port of `pi-tui`'s `Image` component reserves `N` rows (image height in cells) by returning `N-1` blank filler lines plus one real line — this visibly pushes a multi-row gap above the composer, which reads as an unwanted "line break" rather than an overlapping decoration.
 
-## Verification technique for terminal-graphics extensions
+Fix: report exactly **one** line from `render()`, and paint the full N-row-tall image by using the standard terminal cursor save/move/restore trick:
 
-`hub start` a real `omp` TUI session (not headless `-p`), then `hub logs` — even though it's a flat scrollback text dump (not a true screen capture), the raw bytes contain the actual escape sequences sent to the terminal. Grep for `U+10EEEE` (Kitty Unicode placeholder base char) to confirm the graphics path is actually firing across repaint ticks (proves animation timing works), and `hub send` a test string then grep for it in the tail to confirm keyboard focus reached the composer (proves no accidental focus-stealing). This is the only practical way to verify Kitty-graphics-protocol extension behavior without a real interactive terminal window to look at.
+```ts
+const SAVE_CURSOR = "\x1b7";
+const RESTORE_CURSOR = "\x1b8";
+
+// cursorRows = imageRows - 1
+const moveUp = cursorRows > 0 ? `\x1b[${cursorRows}A` : "";
+const body = moveUp + content; // content = the actual image escape sequence(s)
+return [cursorRows > 0 ? SAVE_CURSOR + body + RESTORE_CURSOR : body];
+```
+
+This tells the layout engine the widget is 1 row tall (so it only adds 1 row of space), while the image visually paints upward over whatever was already rendered in the rows above (the transcript tail) — genuine overlap, not a reserved block.
+
+### Sub-gotcha: right-anchoring every row of a multi-row paint
+
+If the image renderer's "unicode placeholder" protocol path returns multiple real text rows (`result.lines`, one physical terminal row of placeholder characters each — as opposed to the "direct placement" path, which is a single APC/sequence the terminal itself expands over N rows from one cursor position), you must right-shift **every** row individually, not just the first:
+
+```ts
+// WRONG: pad only shifts the first row; every row after "\r\n" resets to column 0,
+// left-aligning it and (if pad is literal spaces) blanking over existing text there.
+return [pad + SAVE_CURSOR + moveUp + result.lines.join("\r\n") + RESTORE_CURSOR];
+
+// RIGHT: shift every row via non-destructive cursor-forward (CUF), not literal
+// padding spaces — CUF moves the cursor without touching the cells it crosses,
+// so text already on the left of each row stays visible instead of being erased.
+const moveRight = padCols > 0 ? `\x1b[${padCols}C` : "";
+const content = result.lines
+  .map((line, i) => (i === 0 ? transmitPrefix : "") + moveRight + line)
+  .join("\r\n");
+return [SAVE_CURSOR + moveUp + content + RESTORE_CURSOR];
+```
+
+Use `ESC[nC` (Cursor Forward, CUF) for horizontal positioning across multiple painted rows, never literal space characters — spaces overwrite/erase whatever character was already in those cells, which is exactly the "overlapping text and breaking visuals" symptom this produces if you get it wrong. The single-command protocols (direct-placement Kitty, Sixel, iTerm2 — anything that returns `result.sequence` instead of `result.lines`) don't have this problem: the terminal expands the image over N rows itself from one cursor position, so only one shift is ever needed.
+
+### Known limitation: this is overlap, not reflow
+
+Real text-wrap-around (transcript narrowing its own wrap width to leave a permanent gutter for the pet, like Codex's Rust TUI does via `history_wrap_width`) is not achievable through the extension API — extensions have no hook into the core transcript renderer's wrap width. If a transcript line's text already extends into the pet's column range, the sprite will sit on top of those characters rather than the text having wrapped around it in advance. State this limitation explicitly rather than implying full CSS-float-style reflow was achieved.
+
+## Verifying image-protocol rendering without a real screenshot
+
+`hub start` an interactive `omp` TUI session and use `hub logs` to read the raw captured output. On a Kitty-graphics-capable terminal (`xterm-kitty`), look for the `U+10EEEE` Unicode placeholder character repeated with row/column combining diacritics — its presence (and repetition over time, matching animation frame timing) confirms the live-graphics path is actually firing, not falling back to text. To verify focus wasn't stolen by a UI change, use `hub send` to type literal text into the composer and grep the subsequent `hub logs` output for that exact string landing in the input area.
