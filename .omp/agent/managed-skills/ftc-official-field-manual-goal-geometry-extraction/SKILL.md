@@ -1,30 +1,26 @@
 ---
 name: ftc-official-field-manual-goal-geometry-extraction
-description: "Use when a FIRST Tech Challenge (FTC) team repo references field elements, goals, scoring structures, or field coordinates (e.g. for auto pathing, teleop vision/targeting, or a programming lesson) and the exact positions/orientations aren't already hardcoded — especially when a repo's season name (e.g. \"Biobuzz\") matches a real current FTC game, meaning an official Competition Manual with authoritative field CAD/dimensions exists at ftc-resources.firstinspires.org rather than needing to guess from a screenshot or ask the user for one."
+description: "Use when a FIRST Tech Challenge (FTC) team repo references field elements, goals, scoring structures, or field coordinates (e.g. for auto pathing, teleop vision/targeting, or a programming lesson) and the exact positions/orientations aren't already hardcoded — especially when a repo's season name (e.g. \"Biobuzz\") matches a real current FTC game, meaning an official Competition Manual with authoritative field CAD/dimensions exists at ftc-resources.firstinspires.org rather than needing to guess from a screenshot or ask the user for one. Also use when writing PedroPathing v3 setup code (Constants.java, Follower/Localizer/Drivetrain/Algorithm wiring, PinpointConfig, ForesightConfig) for any repo — NEVER guess field/method names on a pinned library version from memory or general familiarity; decompile the actual sources JAR or verify against official docs first."
 ---
 
-## Problem
+## Field/goal geometry from the official manual (original lesson)
 
-A team repo (e.g. an FTC off-season/practice-named repo like "Biobuzz") references field goals/scoring elements in code (shoot poses, flower poses, PIDF "pointing robot towards goal" comments) but has no CAD or manual locally, and no field screenshot is available in the current session. Don't assume it's a custom/fictional practice game — check first.
+When a user asks to find coordinates of goals/field elements for a season whose name matches a real current FTC game (e.g. "Biobuzz" = BIOBUZZ presented by RTX, 2026-27 season):
 
-## Key insight
+1. Check `https://ftc-resources.firstinspires.org/ftc/game` first — confirms the real season name and links the Competition Manual sections.
+2. Manual sections are served as PDF but `read` on the URL only extracts text for some pages (figures with only captions come through as text; page 1-4 style images may fail text extraction). Download the PDF with `curl`, rasterize specific pages with `pdftoppm -png -r 150 -f N -l M file.pdf prefix`, then `read` the resulting PNGs (vision) to get numbers off diagrams (tile grids, dimensions, figure callouts) that don't exist as text.
+3. Cross-validate manual-derived numbers against the target repo's own existing pose data (e.g. auto path shoot-poses): compute bearing (`atan2`) from an existing pose to your candidate coordinate and compare against that pose's stated heading — a match within a couple degrees is strong corroboration that placeholder/round auto-path numbers actually target the real structure you just located, and also resolves ambiguity (e.g. which of two symmetric structures is "blue" vs "red" in the repo's own coordinate convention).
+4. Always disclose tolerance: manual's own general dimensional tolerance (often ±1 in.) and note the STEP/CAD file link as the source of truth for competition-grade precision.
+5. If a field CAD/STEP link is given, prefer it over reading pixel positions off a raster diagram when precision matters.
 
-FTC repo names often match the actual current-season official game name. Check `https://ftc-resources.firstinspires.org/ftc/game` — it lists "Current Game and Season Materials" with the live game name. If it matches the repo name, this is the **real official game**, and authoritative field data exists:
+## PedroPathing v3 API ground-truthing (critical addition)
 
-- `https://ftc-resources.firstinspires.org/ftc/game/manual-09` — ARENA section (field dims, TILE coordinate grid figures, structure dimensions)
-- `https://ftc-resources.firstinspires.org/ftc/game/manual-10` — Game Details (scoring element staging figure, usually a precise top-down CAD render with the field 6x6 tile grid labeled — this is the single best source for goal x/y/facing)
-- `https://ftc-resources.firstinspires.org/ftc/field/apriltag-art` — AprilTag production art/positions
-- `https://ftc-resources.firstinspires.org/ftc/field/field-cad-step` — official STEP CAD (ground truth, ±1in tolerance per manual §9.1)
-- `https://cad.onshape.com/documents/...` — Onshape field CAD (linked from `/ftc/field`)
+**NEVER write PedroPathing (or any pinned third-party library) setup/config code from memory or "general familiarity" — always decompile the actual pinned version first.** A plausible-looking but wrong API (e.g. inventing `PinpointConfig.hardwareMapName`/`.xOffset`/`.yOffset` instead of the real `.name`/`.xPodOffset`/`.yPodOffset`, or assuming `Follower(HardwareMap, driveConfig, localizerConfig)` when the real (only) constructor is `Follower(Localizer, Drivetrain, Algorithm)`) compiles-looking in a lesson/tutorial but fails for the user with "Cannot resolve symbol" the moment they type it in — and worse, if it *did* compile with wrong-but-similar field names, would silently produce wrong odometry.
 
-## Extraction technique
-
-1. `read` the manual URLs directly — the `read` tool converts PDF pages to markdown via markit, which handles prose fine but **loses figures/diagrams** (renders as `<!-- Page N -->` with no image data, sometimes "Text extraction incomplete").
-2. To get diagram data: `curl` the PDF to a temp dir, then `pdftoppm -png -r 150 -f <page> -l <page> file.pdf out` to rasterize specific pages, then `read` the resulting PNG — the read tool will describe the image.
-3. For precise pixel-to-inch conversion, use the read tool's `?q=...` query selector on the image, e.g. `image.png?q=This is a top-down CAD view of a 6x6 grid field (24in tiles). Give me x,y positions in inches of <features>.` — this invokes a vision-capable read pass. Treat its numeric output as an estimate (verify against exact numbers quoted in the manual's own prose, e.g. explicit "X in. apart" dimensions).
-4. **Cross-validate against the repo's own existing pose data.** If auto/pathing code has example shoot poses with headings, compute the bearing (atan2) from each pose to your candidate goal-diagram positions and compare to the stored heading. A close match (within a couple degrees) confirms both which physical structure a pose targets AND which color/alliance owns which structure — this resolved a real ambiguity (which of two adjacent HIVE structures was "blue" vs "red" in the repo's coordinate frame, where a vision-model guess had them backwards).
-5. Always cite the exact manual section/figure and note the manual's own stated tolerance (e.g. ±1in) in any deliverable — don't present figure-diagram-derived coordinates as laser-measured ground truth. Link the STEP/CAD file as the "if you need exact" fallback.
-
-## Anti-pattern avoided
-
-Don't tell the user "I can't see your screenshot, here are placeholder numbers, fill in a blank table yourself" when the real data is one `read` call away on a public official manual — check whether the game is a real current-season game FIRST before treating field geometry as unknowable.
+Ground-truth procedure:
+1. Read the pinned version from `build.dependencies.gradle` (or equivalent).
+2. Find the artifact's sources JAR in `~/.gradle/caches/modules-2/files-2.1/<group>/<artifact>/<version>/*/[artifact]-[version]-sources.jar` — most Gradle/Android projects have this cached locally already.
+3. If a sources JAR for a *transitive* dependency isn't cached (e.g. `core` pulled in transitively by `revhub`, at a different version than what's directly cached), read the direct dependency's `.pom` file to find the exact transitive version, then try downloading `https://repo1.maven.org/maven2/<group-path>/<artifact>/<version>/<artifact>-<version>-sources.jar` directly via curl — frequently available even when not yet Gradle-cached.
+4. `unzip -o -q *.jar` into a scratch dir and `grep`/`read` the real class source for exact field names, constructor signatures, and required companion objects.
+5. Cross-check against the library's official docs site (search web, or user-provided links) for the *recommended usage pattern* — decompiled source shows what's possible, but docs show the idiomatic/complete wiring (e.g. PedroPathing's AutoTune workflow: a robot-hosted webpage at `192.168.43.1:10158` that measures the real robot and generates the exact `PinpointConfig`/`ForesightConfig` Java to paste in — this is not discoverable from source alone, and hand-deriving/fabricating those tuned physical constants would be wrong regardless of correct field names).
+6. When a repo already vendors tuner/procedure classes (e.g. `pedro/procedures/PinpointTuner.java`, `ForesightTuner.java`) but a registration file (`pedro/Tuning.java`) is an empty stub, that's the missing link — the tutorial's job is to show wiring them up via the library's own annotation/registration mechanism (e.g. `@Tuner`-annotated static factory methods returning `Procedure`), not to reimplement tuning logic.
