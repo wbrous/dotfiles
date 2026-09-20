@@ -51,3 +51,5 @@ dotfiles() {
 		git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"
 	fi
 }
+
+. "$HOME/.local/share/../bin/env"
