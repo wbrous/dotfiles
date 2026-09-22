@@ -1,4 +1,9 @@
 {
+  "telemetry": {
+    "diagnostics": true,
+    "metrics": true,
+    "anthropic_retention": true
+  },
   "ui_font_family": ".ZedSans",
   "buffer_font_family": "JetBrainsMono Nerd Font",
   "terminal": {
@@ -23,6 +28,7 @@
     "openai_compatible": {},
   },
   "agent": {
+    "default_profile": "ask",
     "tool_permissions": {
       "default": "allow",
       "tools": {}
@@ -30,7 +36,7 @@
     "default_model": {
       "effort": "high",
       "provider": "zed.dev",
-      "model": "claude-sonnet-5",
+      "model": "claude-fable-5-1",
       "enable_thinking": true,
     },
     "favorite_models": [],
