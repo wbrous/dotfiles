@@ -1,80 +1,78 @@
 ---
 name: local-dot-local-hostname-caddy-dev-proxy
-description: "Use when setting up a temporary local reverse-proxy setup so a browser can reach services via friendly hostnames like foo.local / foo-admin.local instead of localhost:PORT — especially for testing a multi-service app (e.g. Logto: public app + admin console) where one service's Admin/Web-Crypto UI requires a secure context. Also covers the systemd/Arch nsswitch.conf gotcha where .local hostnames in /etc/hosts are silently ignored because mdns_minimal is queried before files, and the browser HTTPS-auto-upgrade trap that breaks a plain-HTTP-only proxied port."
+description: "Use when setting up a temporary local reverse-proxy setup so a browser can reach services via friendly hostnames like foo.local / foo-admin.local instead of localhost:PORT — especially for testing a multi-service app (e.g. Logto: public app + admin console) where one service's Admin/Web-Crypto UI requires a secure context. Also covers the systemd/Arch nsswitch.conf gotcha where .local hostnames in /etc/hosts are silently ignored because mdns_minimal is queried before files, the browser HTTPS-auto-upgrade trap that breaks a plain-HTTP-only proxied port, and a Host-header-based backend routing trap where a reverse-proxied app (e.g. Logto) decides \"which service/tenant is this?\" by matching Host/X-Forwarded-Host against a hardcoded internal endpoint config rather than the listening port — requiring the proxy to rewrite Host (and X-Forwarded-Host/Proto/Port) to the internal expected value even though the browser-facing hostname is different."
 ---
 
 ## Problem
 
-Testing a multi-service local app (e.g. self-hosted Logto: public app on one port, admin console on another) where you want browser-friendly hostnames instead of `localhost:PORT` — e.g. `foo.local` for the app, `foo-admin.local` for the admin console — purely for a temporary local test, not a permanent system change.
+Want `foo.local` / `foo-admin.local` (etc.) in the browser instead of `localhost:PORT`, for local testing only — temporary, not meant to be committed or made permanent.
 
-## Components
+## Recipe
 
-1. **`/etc/hosts` entries** (needs sudo): `127.0.0.1 foo.local foo-admin.local`.
-2. **A local Caddy instance** (no sudo needed if you avoid ports 80/443 — install the static binary to `~/.local/bin/caddy` via `curl -sL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o ~/.local/bin/caddy && chmod +x ~/.local/bin/caddy`, and bind to unprivileged ports like `18080`/`18443` instead).
-3. **Docker Compose `extra_hosts` override** if the containerized app makes internal self-calls back to its own public `ENDPOINT`-style URL (e.g. Logto's OIDC issuer self-validation) — the container's own DNS won't know `foo.local` unless you add `extra_hosts: ["foo.local:host-gateway"]` to that service via a temporary override compose file (`docker compose -f compose.yml -f /tmp/override.yml up -d --wait`), keeping the real repo `compose.yml` untouched.
+1. Add entries to `/etc/hosts`: `127.0.0.1 foo.local foo-admin.local` (needs sudo — see fingerprint gotcha below).
+2. Run a local Caddy instance (portable binary, no install needed: `curl -sL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o ~/.local/bin/caddy && chmod +x ~/.local/bin/caddy`) with a **temporary** Caddyfile reverse-proxying each hostname to its real `127.0.0.1:PORT`.
+3. Use unprivileged ports (e.g. `18080`, `18443`) to avoid needing root to bind 80/443, and to sidestep collisions with whatever else may already be squatting on 8080 on a dev box — check with `ss -ltn` first, don't assume a port is free from memory.
+4. Update the app's own `ENDPOINT`-style env var to the new public hostname/port so self-referencing URLs (OIDC issuer, asset links, etc.) match what the browser will actually hit, then restart just that container.
 
-## Gotcha 1: `.local` silently ignored by `/etc/hosts` on systemd/Arch systems
+## Gotcha 1: `.local` silently ignored by `/etc/hosts` (systemd/Arch specific)
 
-Check `/etc/nsswitch.conf`'s `hosts:` line. A common systemd-resolved-managed default is:
-
+Default `/etc/nsswitch.conf` on systemd-resolved systems often has:
 ```
 hosts: mymachines mdns_minimal [NOTFOUND=return] resolve files myhostname dns
 ```
+`[NOTFOUND=return]` on `mdns_minimal` means: if mDNS resolution for a `.local` name comes back not-found, **stop immediately** — `files` (i.e. `/etc/hosts`) is never even reached. `getent hosts foo.local` returns nothing even though the entry is clearly present in `/etc/hosts`.
 
-`[NOTFOUND=return]` applies to the preceding `mdns_minimal` module: if mDNS resolution for a `.local` name comes back not-found, nsswitch **stops the chain right there** and never falls through to `resolve`/`files`/`dns` — so your `/etc/hosts` entry is never even consulted, no matter how correctly it's written. `getent hosts foo.local` will return nothing even though `cat /etc/hosts` shows the line.
-
-**Fix (temporary, revert after testing):**
-```bash
-sudo cp /etc/nsswitch.conf /etc/nsswitch.conf.<test-name>-backup
+Fix (temporary, revert on cleanup): back up and reorder so `files` comes first:
+```
+sudo cp /etc/nsswitch.conf /etc/nsswitch.conf.BACKUP-SUFFIX
 sudo sed -i 's/^hosts:.*/hosts: files mymachines resolve myhostname mdns_minimal [NOTFOUND=return] dns/' /etc/nsswitch.conf
 ```
-This restores standard Linux precedence (`files` first). Revert from the backup during cleanup — this is a system-wide change affecting real mDNS resolution (printers, Chromecasts, etc.) for the duration of the test.
-
-Verify with `getent hosts foo.local` before troubleshooting anything else — if that returns empty, don't waste time debugging Caddy/Docker; fix nsswitch first.
+Verify with `getent hosts foo.local` before assuming the browser will resolve it. Restore from the backup on cleanup — this is a system-wide change affecting all `.local`/mDNS resolution (printers, Chromecasts, etc.) for the duration of the test.
 
 ## Gotcha 2: browser HTTPS-auto-upgrade breaks a plain-HTTP-only proxied port
 
-Modern Firefox/Chrome auto-upgrade `http://` to `https://` for typed/bookmarked URLs by default. If one Caddy site block is plain HTTP only (e.g. the app, while the admin console legitimately needs `tls internal` for Web Crypto secure-context reasons), the browser will silently try HTTPS against that HTTP-only port and fail with `SSL_ERROR_RX_RECORD_TOO_LONG` / "SSL received a record that exceeded the maximum permissible length" — a classic TLS-ClientHello-against-plaintext-server signature.
+Modern Firefox/Chrome auto-upgrade `http://` navigations to `https://` by default. If Caddy is only listening HTTP on that port, the browser's TLS ClientHello hits a plain HTTP server and you get `SSL received a record that exceeded the maximum permissible length` (Firefox) or similar.
 
-**Fix:** make *every* proxied hostname genuinely HTTPS via Caddy's `tls internal` (self-signed local CA), not just the one that strictly needs it. Update the app's own `ENDPOINT`-style env var to `https://` too and restart/recreate that container so its OIDC issuer (or equivalent) matches. One cert-trust-warning click per domain in the browser is the tradeoff; it beats fighting the browser's upgrade behavior.
-
-Also add a global Caddyfile block to stop Caddy's own automatic HTTP→HTTPS redirect from trying (and failing, unprivileged) to bind port 80:
+Fix: don't fight the browser — make the port genuinely HTTPS via Caddy's `tls internal` (self-signed local CA, no ACME/DNS needed):
 ```caddyfile
 {
-	auto_https disable_redirects
-}
-```
-
-## Minimal working Caddyfile pattern
-
-```caddyfile
-{
-	auto_https disable_redirects
+	auto_https disable_redirects   # prevents Caddy trying to bind :80 for an HTTP->HTTPS redirect (permission denied if non-root)
 }
 
 https://foo.local:18080 {
 	tls internal
 	reverse_proxy 127.0.0.1:3001
 }
+```
+One cert-warning click-through per domain per browser session; no system trust-store changes needed for casual local testing.
 
+## Gotcha 3: reverse-proxied app routes by Host header against an internal endpoint config, not by port
+
+Some apps (e.g. Logto, which serves both its public app and its admin console from the same process pool) decide "which service is this request for?" by matching the incoming `Host` / `X-Forwarded-Host` header against a hardcoded internal config value (e.g. `ADMIN_ENDPOINT=http://localhost:3002`) — **not** simply by which backend port was hit. If Caddy forwards the real external hostname (`foo-admin.local:18443`) unchanged, the app doesn't recognize the request as "admin traffic," silently falls through to default/core behavior, and you get a confusing generic error (e.g. Logto's "Session not found. Please go back and sign in again" 404 — the *same* error page the main app shows when hit with no active session, making the two failures look identical and the actual root cause invisible from the browser alone).
+
+Diagnosis: curl the backend directly (`curl -sL http://localhost:3002/`) and compare against curling through the proxy (`curl -skL https://foo-admin.local:18443/`) — if the direct hit redirects correctly (e.g. to `/console/welcome`) but the proxied hit redirects somewhere else entirely (e.g. back to the *other* service's public hostname), that's the signature of this bug.
+
+Fix: rewrite **both** `Host` and the `X-Forwarded-*` headers to match what the app's internal config expects, even though the browser-facing hostname is different:
+```caddyfile
 https://foo-admin.local:18443 {
 	tls internal
-	reverse_proxy 127.0.0.1:3002
+	reverse_proxy 127.0.0.1:3002 {
+		header_up Host localhost:3002
+		header_up X-Forwarded-Host localhost:3002
+		header_up X-Forwarded-Proto http
+		header_up X-Forwarded-Port 3002
+	}
 }
 ```
+Rewriting `Host` alone is often insufficient if the app has `TRUST_PROXY_HEADER`-style config enabled — it may prioritize `X-Forwarded-Host` over the raw `Host` header, so both must be overridden together.
 
-Start with: `caddy run --config Caddyfile --adapter caddyfile` (via a supervised background process, not persisted, so it dies with the session — matches "temporary" intent).
+## Fingerprint-gated sudo
 
-## Cleanup checklist (temporary setup — always revert)
+On a machine with fingerprint-gated `sudo` (fprintd/polkit), the `/etc/hosts` and `/etc/nsswitch.conf` edits need a physical touch. Use `hub start` with `pty: true` to surface the interactive prompt (see `sudo-interactive-tty-via-hub`), tell the user a prompt is pending, and `hub wait`/`hub logs` to observe completion — it can time out once and need a retry; that's normal, not a sign of failure.
 
-1. Stop the Caddy process.
-2. `docker compose down -v` the app stack.
-3. Remove the two lines from `/etc/hosts`.
-4. Restore `/etc/nsswitch.conf` from the `.backup` file made above.
-5. Delete the temp Caddyfile/override directory.
+## Cleanup (this is meant to be temporary)
 
-## Notes
-
-- Port conflicts happen even when a prior `ss -ltn` check said a port was free — re-check immediately before starting Caddy, and prefer high unprivileged ports (18080/18443, not 8080/8443 which are common defaults other tools grab) to sidestep `bind: address already in use` and avoid needing any sudo for port binding at all.
-- Sudo on this class of machine is fingerprint-gated (see `sudo-interactive-tty-via-hub`) — both the `/etc/hosts` edit and the `nsswitch.conf` edit need a physical touch; if it's not the user's first prompt of the session it may time out waiting for a stale touch — always start a **fresh** `hub start` for each sudo command rather than reusing/retrying the same stuck process.
-- A plain redirect to an "unknown session" / "session not found" page when visiting a Logto-style core app's root URL directly (no active OIDC flow) is expected behavior, not a bug — don't waste time debugging that specifically for the *app* port; it only matters if the *admin console* shows the same thing after accepting its cert warning.
+- Stop the Caddy process.
+- `docker compose down -v` (or equivalent) for the proxied app.
+- Remove the added `/etc/hosts` lines.
+- Restore `/etc/nsswitch.conf` from the backup made in Gotcha 1.
