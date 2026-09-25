@@ -1,21 +1,62 @@
 ---
 name: biobuzz-ftc-subsys-package-conventions
-description: "Adding new FTC subsystem classes under teamcode/subsys (motors/servos); shows style, PIDF reuse, state enums, hardwareMap naming."
+description: "Adding new FTC subsystem classes under teamcode/subsys (motors/servos); shows style, PIDF reuse, and how to keep tunables live-editable via Tunables.java."
 ---
 
-## Context
-Repo: Biobuzz FTC robot, `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsys/`.
-Existing subsystems: `PIDF.java` (general PIDF controller, already implemented), `Flywheel.java`, `Intake.java`, `Transfer.java`.
+## Scope
+Applies to `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsys/` and any magic numbers governing robot *behavior* (gains, deadbands, slew rates, thresholds, positions, ranges) anywhere in `teamcode/`.
 
-## Conventions observed
-- Minimal comments: one-line intent comments only where non-obvious (e.g. `// tune once flywheel is mounted`, `// call every loop to drive ... towards targetRPM via PIDF`). No large doc blocks in subsys classes (unlike `Robot.java` which has a one-line file-summary comment at the very top).
-- Package: `org.firstinspires.ftc.teamcode.subsys;` — no blank-then-comment header needed.
-- Constructor takes `HardwareMap hw` and pulls the device via `hw.get(Type.class, "deviceName")` where `deviceName` matches the lowercase subsystem name (`"flywheel"`, `"intake"`, `"transfer"`).
-- Motors: use `DcMotor` for simple on/off/reverse subsystems (Intake), `DcMotorEx` when closed-loop velocity control is needed (Flywheel, via `motor.getVelocity()` in ticks/sec).
-- State exposed via a public `enum State {...}` nested in the subsystem class, with a private `state` field and a `getState()` accessor. Setter methods (`open()/close()`, `forward()/reverse()/off()`) both mutate `state` and command hardware in one call — no separate "apply" step.
-- Servos: placeholder open/closed positions as `private static final double OPEN_POSITION/CLOSED_POSITION` with a `// placeholder positions, tune once the servo is mounted` comment; constructor calls `close()` to set a known initial state.
-- PIDF-driven subsystems reuse the existing `subsys/PIDF.java` class (`new PIDF(kP, kI, kD, kF)`, `.calc(target, current)`) rather than writing a new controller. Gains are seeded at 0 with a `// tune once X is mounted` comment; an `update()` method (called every loop by the caller) computes and applies `motor.setPower(pidf.calc(target, current))`.
-- Verification: `./gradlew :TeamCode:compileDebugJavaWithJavac -q` to confirm new subsys classes compile (fast, ~10s); no unit-test harness exists for subsys classes in this repo.
+## Core rule: all behavior-tuning constants live in `Tunables.java`
+`TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Tunables.java` is `@Configurable` (byLazar Panels) and is the single source of truth for any constant a mentor/driver might want to adjust without recompiling. This includes, but is not limited to:
+- PIDF gains (flywheel, heading/aim controllers, etc.)
+- deadbands, slew rates, multipliers
+- servo open/closed positions
+- shoot-range / angle-acceptance thresholds (`field/GoalTargeting.java` reads these via `import static org.firstinspires.ftc.teamcode.Tunables.*;`)
+- drive-shaping constants (slow-mode scale, stopped threshold) even in "standalone" OpModes like `WilsTeleOp`
 
-## Gotcha
-The `edit` tool's `PUT` line-range anchoring can reject edits on files it hasn't fully displayed (e.g. after a truncated/partial read). For brand-new near-empty stub files, prefer `write` (full-file overwrite) over `edit` to avoid anchor-mismatch errors.
+Fields **must** be `public static` (non-final) — Panels can't edit `final` fields or instance fields.
+
+### What does NOT belong in Tunables
+- Physical hardware specs that are facts about the part, not tuning choices (e.g. `Flywheel.TICKS_PER_REV` — a motor's encoder resolution). Changing these live would just produce wrong math.
+- Fixed field geometry from the game manual (e.g. `FieldConstants.Goal` positions/facings) — not something adjusted during a match, and restructuring the `Goal` object into flat primitives buys nothing.
+- Constants internal to vendored/adapted PedroPathing AutoTune procedures under `pedro/procedures/` (e.g. `ForesightTuner`'s `POWER`/`RUNTIME`/`SAMPLES`) — these are calibration-wizard internals, not team robot-behavior tuning.
+
+## Live-reload pattern (not just init-time read)
+Reading a Tunables field once in a constructor only picks up the *startup* value. To make a value truly live-editable mid-match, re-apply it every loop/update call, following `Flywheel.update()`'s pattern:
+```java
+public void update() {
+    pidf.updateTerms(flywheelP, flywheelI, flywheelD, flywheelF); // re-read every tick
+    motor.setPower(pidf.calc(targetRPM, getRPM()));
+}
+```
+Same pattern applied to `BozoTeleOp.aimTurnPower()`: `headingPID.updateTerms(Tunables.headingP, Tunables.headingI, Tunables.headingD, Tunables.headingF);` is called at the top of the method (called every loop while aiming), not just once in a field initializer.
+
+Simple per-tick reads (no persistent-state object to update) just reference `Tunables.xxx` directly at point of use — no extra plumbing needed (e.g. `Tunables.aimHeadingDeadbandDeg`, `Tunables.slowModeMinScale`).
+
+## Standard subsystem class shape
+```java
+package org.firstinspires.ftc.teamcode.subsys;
+
+import static org.firstinspires.ftc.teamcode.Tunables.*;
+
+public class Foo {
+    public enum State {OFF, FORWARD, REVERSE} // or OPEN/CLOSED for servos
+
+    private final DcMotor motor; // or Servo
+    private State state = State.OFF;
+
+    public Foo(HardwareMap hw) {
+        motor = hw.get(DcMotor.class, "lowercasename"); // hardware map name matches README's config
+    }
+
+    public State getState() { return state; }
+
+    public void forward() { state = State.FORWARD; motor.setPower(1.0); } // setter mutates state AND commands hardware
+}
+```
+- Minimal one-line comments; no large block comments.
+- Constructor takes `HardwareMap hw`, looks up device by exact lowercase name.
+- Setter methods are verbs (`forward()/reverse()/off()`, `open()/close()`), not JavaBean-style, and always do state+hardware together.
+
+## Verification
+No automated tests exist in this repo. Verify with `./gradlew :TeamCode:compileDebugJavaWithJavac -q` after any Tunables/subsys change.
