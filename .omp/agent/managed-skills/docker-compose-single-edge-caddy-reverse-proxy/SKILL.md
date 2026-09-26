@@ -1,93 +1,63 @@
 ---
 name: docker-compose-single-edge-caddy-reverse-proxy
-description: "Use when consolidating a docker-compose stack's exposed services behind one edge Caddy reverse proxy, especially when an included/vendored compose file (e.g. via include:) already publishes its own host ports that must be disabled without editing the vendored file."
+description: "Use when converting a docker-compose stack to ROOT_DOMAIN-driven subdomain routing through one edge Caddy on 80/443; ports.yml, !override merge, *.localhost dev."
 ---
 
-## Problem
+## Goal
+User wants: one `ROOT_DOMAIN` env var, Caddy automatically routes subdomains to services over `:80`/`:443` (e.g. `accounts.domain.com` -> Logto, `api.domain.com` -> backend, `dashboard.domain.com` -> a static SPA). This supersedes an earlier port-numbered scheme (`:3000`-`:3004`) once the user asks for "real" domain routing.
 
-A docker-compose stack has multiple services each publishing their own
-host ports directly (backend API, an included/vendored auth service like
-Logto, static frontend SPAs). The goal: put a single edge Caddy container
-in front of everything, so it's the only container binding host ports,
-while backend/auth services become internal-network-only.
+## Caddyfile pattern
+Use Caddy's `{$VAR}` env-var substitution per site block, NOT `:PORT` blocks:
 
-## Removing a vendored/included service's own `ports:` without editing it
+```caddyfile
+accounts.{$ROOT_DOMAIN} {
+	reverse_proxy app:3001
+}
 
-If a service comes from `include:` (e.g. `apps/identity/compose.yml`)
-and hardcodes its own `ports:` list, you cannot just re-declare
-`ports: []` in the root file — Compose's default merge behavior for list
-keys like `ports`/`volumes`/`environment` is a **union**, not a replace,
-so `[]` merged with the existing list leaves the existing list unchanged.
+api.{$ROOT_DOMAIN} {
+	reverse_proxy backend:3000
+}
 
-Use the Compose Spec's `!override` YAML merge tag instead, from the root
-file:
-
-```yaml
-services:
-  app:  # matches the included file's service name
-    ports: !override []
+dashboard.{$ROOT_DOMAIN} {
+	root * /srv/dashboard
+	encode gzip
+	try_files {path} /index.html
+	file_server
+}
 ```
 
-Verify with `docker compose config` before building — the `ports:` key
-should disappear entirely from the resolved `app` service. This is a
-supported, non-invasive way to change a merged/included service without
-touching the vendored file.
+Caddy automatically obtains/renews HTTPS for every hostname: real ACME (Let's Encrypt) for a public domain with `:80`/`:443` reachable from the internet; its own **internal CA** (self-signed) for `localhost`/non-public hostnames — this just works offline, no ACME failure loop.
 
-## Reverse-proxying an OIDC provider (e.g. Logto) through Caddy
+## Bind-mount the Caddyfile, don't bake it in
+`COPY Caddyfile ...` in the Dockerfile only sets a sane default; also bind-mount it in compose (`./caddy/Caddyfile:/etc/caddy/Caddyfile:ro`) so routing edits take effect via `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile` with **no rebuild, no downtime**. Only a *new static site* (new SPA build stage baked into the image) needs an actual image rebuild — document that distinction explicitly for users adding sites later.
 
-- Caddy's `reverse_proxy` passes the client's original `Host` header
-  through unmodified by default (unlike nginx, which requires explicit
-  `proxy_set_header`). This matters because Logto's `ENDPOINT`/
-  `ADMIN_ENDPOINT` env vars are baked-in absolute URLs
-  (`http://localhost:3001`) that must match what the browser sees — as
-  long as Caddy publishes the *same* host:port that used to be published
-  directly (just now via a proxy hop instead), nothing else needs to
-  change.
-- Check whether the auth service's compose file already sets something
-  like `TRUST_PROXY_HEADER: "1"` — if so, it was already designed to sit
-  behind a reverse proxy, which is a strong signal this refactor is safe
-  and expected, not a hack.
+## Local dev: use ROOT_DOMAIN=localhost, not a fake TLD
+`*.localhost` resolves to `127.0.0.1`/`::1` automatically on modern OSes/browsers (RFC 6761) — confirm with `getent hosts accounts.localhost`. No `/etc/hosts` editing needed. This is the only feasible way to smoke-test domain-based Caddy routing in a sandboxed/offline environment (a fake domain like `example.test` would make Caddy retry ACME forever since it can't resolve publicly).
 
-## Consolidating multiple per-app Caddy containers into one
+`curl -k` bypasses the self-signed cert warning for automated checks. For a **headless browser** managed by the eval tool, `ignore_https_errors`/`ignoreHTTPSErrors` on `browser.open` does NOT reliably bypass `net::ERR_CERT_AUTHORITY_INVALID` for the *default managed Chromium*. Workaround: launch a system Chromium binary explicitly with `app: { path: "/usr/bin/chromium", args: ["--ignore-certificate-errors"] }` — this reliably works.
 
-If you previously gave each static frontend its own
-Dockerfile+Caddyfile+caddy container (one Caddy per app), replace them
-with a single edge Caddy image that:
-- Has one multi-stage Dockerfile building all the static frontends (reuse
-  each app's existing build stages) and copying each `dist/` to a
-  distinct path (`/srv/app-a`, `/srv/app-b`, ...).
-- Has one Caddyfile with one `:PORT { }` block per service: `reverse_proxy`
-  blocks for backend services, `root * /srv/app-x` + `try_files {path}
-  /index.html` + `file_server` blocks for each static SPA (SPA fallback
-  for client-side routing).
-- Publishes every port (`3000-3004` etc.) from that single container in
-  compose; every proxied service loses its own `ports:` entry.
+## Making one env var drive everything (derive, don't duplicate)
+Don't hardcode a hostname in more than one place. Derive every dependent URL from `ROOT_DOMAIN` via nested compose interpolation (confirmed working: `"${VAR:-https://accounts.${ROOT_DOMAIN}}"`), e.g.:
+- Backend's `LOGTO_ISSUER` -> `https://accounts.${ROOT_DOMAIN}/oidc`
+- Logto's own `ENDPOINT`/`ADMIN_ENDPOINT` -> `https://accounts.${ROOT_DOMAIN}` / `https://console.${ROOT_DOMAIN}`
+- Backend's `CORS_ALLOWED_ORIGINS` -> include `https://dashboard.${ROOT_DOMAIN}`, etc.
+- Dashboard build args (`VITE_LOGTO_ENDPOINT`, `VITE_BACKEND_URL`) -> same subdomain pattern
 
-## Verification checklist
+Test nested interpolation before relying on it: `ROOT_DOMAIN=x docker compose -f test.yml config` and check the resolved value.
 
-- `docker compose config --quiet` after edits (catches YAML/merge
-  mistakes before building).
-- `docker port <caddy-container>` should list every port; every other
-  service's `docker port` should be empty.
-- `curl` each port for the expected status code (404 on an unmatched
-  backend route, 302 on an OIDC/console redirect, 200 + SPA-fallback 200
-  on a deep client-side route for each static app).
-- Do a real end-to-end auth flow through the proxy (not just curl) — a
-  cached SSO session silently refreshing a token, or a fresh sign-in,
-  proves the Host-header pass-through actually works for the OIDC
-  provider, which curl alone won't catch.
+## Overriding a vendored/included service's config without editing it
+If a sub-service comes from `include: - path: vendored/compose.yml`, you can override specific keys from the root file by redeclaring the same service name:
+- Scalars/maps (e.g. `environment:`) merge key-by-key — later file wins per key, other keys untouched.
+- **Lists** (e.g. `ports:`) get **unioned** by default, NOT replaced — declaring `ports: []` does nothing. Use the YAML merge tag `!override` to force-replace: `ports: !override []`. Verify empirically with `docker compose -f <file> config` before trusting this, since compose merge semantics vary by key type.
+- This is the correct way to make a single edge Caddy the sole host-port-binding container even when a vendored service (e.g. Logto) publishes its own ports — don't edit the vendored file.
+- Bonus: check the vendored service's own env for `TRUST_PROXY_HEADER`/similar — if present, the service was already designed to sit behind a reverse proxy, which is a strong "yes, proxy this" signal.
 
-## Gotcha: orphaned containers holding the target ports
+## Cert/state persistence
+Add named volumes for `/data` and `/config` in the Caddy service (e.g. `caddy-data`, `caddy-config`) so certificates and other Caddy state survive `docker compose down`/restarts — otherwise ACME re-issues certs every restart and can hit rate limits in real production.
 
-After swapping out old per-app services for the new consolidated one,
-`docker compose up -d` may fail with "port is already allocated" because
-the old containers are still running under their old service names
-(now-orphaned). Fix: `docker rm -f <old-container-names>` (or `docker
-compose down <old-service-name>` before removing the service definition),
-then `docker compose up -d --remove-orphans`.
-
-Also: after editing `ports:` on an existing service, `docker compose up
--d` may not recreate a container whose only change was the ports list if
-it was already created moments earlier under stale config — force it with
-`docker compose up -d --force-recreate <service>` and confirm via `docker
-port` that the new mapping actually took effect.
+## Verification checklist (no real DNS/public deployment needed)
+1. `docker compose config --quiet` after every edit.
+2. `docker compose up -d --build`; check `docker compose logs caddy` for `certificate obtained successfully ... issuer: local` per hostname.
+3. `curl -sk https://<subdomain>.localhost/` for every site, including a deep SPA route (`/some/deep/path` should still 200 via `try_files ... /index.html`).
+4. `docker port <caddy-container>` should list `:80`/`:443`; `docker port <other-service-container>` should list **nothing** — proves only Caddy binds host ports.
+5. For OIDC-backed apps: click "Sign in" through the new domain and confirm the redirect URL's `iss` and `redirect_uri` show the new subdomains (even a `redirect_uri did not match` error from Logto is a *pass* here — it proves the whole chain wired correctly and only the one-time manual Admin Console URI registration remains, which requires real admin credentials you may not have in a fresh browser session).
