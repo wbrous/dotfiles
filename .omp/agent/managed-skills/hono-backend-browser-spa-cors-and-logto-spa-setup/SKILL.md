@@ -1,57 +1,106 @@
 ---
 name: hono-backend-browser-spa-cors-and-logto-spa-setup
-description: "Use when wiring a new browser SPA (Vite/React) to a Hono+Logto backend in a Bun workspace monorepo: CORS 404/blocked preflight, Logto oidc.invalid_target, shadcn init prompts, or bun add failing on unpublished workspace packages."
+description: "Use when wiring a new browser SPA (Vite/React) to a Hono+Logto backend in a Bun workspace monorepo: CORS 404/blocked preflight, Logto oidc.invalid_target, or Docker frozen-lockfile failures after adding a workspace app."
 ---
 
-## Context
+## Symptom: browser SPA can't reach a Hono backend cross-origin
 
-Building a new browser-based frontend (Vite SPA) against an existing Hono backend + Logto auth in a Bun workspace monorepo (pattern seen in optic-fyi: `apps/backend` + `packages/api-client` + `apps/*-dashboard`). Several non-obvious gotchas surface only when you actually exercise the app in a browser — build/typecheck passing is not enough.
+If a Hono backend has no `hono/cors` middleware, every cross-origin browser
+request fails: preflight `OPTIONS` returns 404 (not 204), and the browser
+blocks the real request even if the server would return 200. `curl` from a
+non-browser context looks fine, which masks this — always test with
+`curl -i -X OPTIONS <url> -H "Origin: <spa-origin>" -H "Access-Control-Request-Method: GET"`
+to confirm.
 
-## Gotcha 1: Hono backend has no CORS by default
+Fix: add `hono/cors` to the root `Hono()` chain, driven by an env var
+(comma-separated allowed origins, parsed via zod `.transform(s => s.split(","))`),
+not hardcoded — different dashboards/deploys need different origins.
 
-A Hono backend built for a same-origin or server-to-server consumer typically has zero CORS middleware. The moment a browser SPA on a different port calls it, every preflight `OPTIONS` request 404s (Hono has no route for it) and the browser blocks the real request even if the server would have returned 200.
-
-**Symptom**: `curl -X OPTIONS ... -H "Origin: http://localhost:5173"` returns `404 Not Found` instead of `204` with `Access-Control-Allow-Origin`.
-
-**Fix**: add `hono/cors` to the root app:
 ```ts
 import { cors } from "hono/cors";
 app.use("*", cors({
-  origin: env.CORS_ALLOWED_ORIGINS, // string[], from a comma-separated env var
+  origin: env.CORS_ALLOWED_ORIGINS,
   allowHeaders: ["Content-Type", "Authorization"],
   allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
 }));
 ```
-Add `CORS_ALLOWED_ORIGINS` to the env schema (comma-separated, `.transform(v => v.split(",").map(s=>s.trim()).filter(Boolean))`, sensible dev default), wire it through docker-compose `environment:`, and document it in the README. Rebuild+restart the backend container after adding — code changes need `docker compose up -d --build <service>`.
 
-## Gotcha 2: Logto SPA sign-in needs `resources` in LogtoConfig, not just at getAccessToken time
+Wire the env var through `docker-compose.yml`'s service `environment:` block
+and `.env.example` too, or the container won't pick it up.
 
-If you call `getAccessToken(API_RESOURCE)` for a resource that wasn't declared in the *original sign-in request*, Logto returns `oidc.invalid_target` / "resource indicator is missing, or unknown" — repeatedly, in a way that can spin the UI forever on "Loading...".
+## Symptom: Logto `oidc.invalid_target` / infinite "Loading…" after sign-in
 
-**Fix**: declare every resource the app will ever request in `LogtoConfig` itself:
+`useLogto().getAccessToken(resource)` throws `oidc.invalid_target` if the
+`resource` wasn't declared on the **LogtoConfig itself** — passing it only
+to a `signIn()` call is not enough for `@logto/react`. Fix:
+
 ```ts
 export const logtoConfig: LogtoConfig = {
   endpoint, appId,
-  resources: [API_RESOURCE], // NOT just passed to getAccessToken later
+  resources: [API_RESOURCE], // must list every resource getAccessToken() will ever request
 };
 ```
-After fixing, existing browser sessions/tokens from before the fix are stale — clear storage (`tab.clearStorage("local")` + `tab.clearStorage("session")`, or just sign out) and sign in again.
 
-## Gotcha 3: `bun add <workspace-package>` fails for unpublished internal packages
+After fixing this, existing sign-in sessions from before the fix are stale —
+clear local/session storage (or sign out) and sign in again; the error
+won't self-heal on hot reload alone.
 
-`bun add @scope/internal-pkg` inside a freshly-scaffolded app tries npm registry first and 404s, even though it's a sibling workspace member. Fix: add the dependency manually to `package.json` as `"@scope/internal-pkg": "workspace:*"`, then run `bun install` from the **repo root** (not the app dir) to resolve/link it.
+## Symptom: `api-client`'s `headers` option can't be async
 
-## Gotcha 4: shadcn CLI `-b <base>` alone isn't enough non-interactively
+If a typed Hono RPC client's `ApiClientOptions.headers` is
+`Record<string,string> | (() => Record<string,string>)` (synchronous only)
+but your auth flow needs `await getAccessToken(...)`, inject the token via
+the `fetch` override instead, not `headers`:
 
-`shadcn init -y -t vite -b radix --no-monorepo` still prompts interactively for a preset (Nova/Vega/Maia/...) despite `-y`. Combine a preset name with the base flag instead: `shadcn init -y -t vite -p nova -b radix --no-monorepo`. Presets are theme names (nova, vega, maia, lyra, mira, luma, sera, rhea), separate from `-b`.
+```ts
+createApiClient({
+  baseUrl,
+  fetch: (async (input, init) => {
+    const token = await getAccessToken(resource);
+    const headers = new Headers(init?.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    return fetch(input, { ...init, headers });
+  }) as typeof fetch, // cast needed: Bun's `typeof fetch` includes extra members like `preconnect`
+});
+```
 
-## Gotcha 5: New workspace app breaks other services' Docker builds via lockfile drift
+For plain bearer-token auth (already have a stored token, no async mint
+step), the synchronous `headers: () => ({...})` option is fine — just make
+sure the return type is exactly `Record<string, string>` (no optional/
+undefined values) or TS rejects it.
 
-Adding new workspace apps changes `bun.lock` (new entries). Any other service's Dockerfile that does `bun install --frozen-lockfile` after copying only *some* workspace `package.json` files will fail with "lockfile had changes, but lockfile is frozen" — because the lockfile now references packages whose `package.json` wasn't copied into that build context. Fix: add `COPY apps/<new-app>/package.json apps/<new-app>/package.json` to every Dockerfile that does a frozen-lockfile install, even if that image never uses the new app.
+## Symptom: Docker build fails `lockfile had changes, but lockfile is frozen` after adding a new Bun workspace app
 
-## Gotcha 6: Radix/shadcn Tabs triggers can silently no-op on a raw `.click()` in headless browser automation
+A Dockerfile's `deps` stage that does `COPY <selected-package.json-files> && bun install --frozen-lockfile`
+must copy **every** workspace member's `package.json` referenced in the root
+`bun.lock`, not just the ones the image actually needs at runtime. Adding a
+new `apps/*` workspace member (even one irrelevant to a given service's
+image) changes `bun.lock`, and any other service's Docker build that doesn't
+also `COPY` that new app's `package.json` will fail the frozen-lockfile
+install. Fix: add a `COPY apps/<new-app>/package.json apps/<new-app>/package.json`
+line to every Dockerfile in the monorepo when adding a workspace app.
 
-A plain `element.click()` or DOM `.click()` on a Radix `Tabs.Trigger` (`button[role="tab"]`) sometimes doesn't switch tabs in headless CDP automation — Radix listens for pointer events, not just `click`. If a tab switch appears to do nothing (screenshot unchanged), dispatch a full pointer sequence instead:
+## shadcn CLI on a fresh Vite scaffold
+
+`shadcn init -y -b radix` alone still prompts interactively for a *preset*
+(a theme name like `nova`, `vega`, ...) even with `-y`. Use
+`-p <preset> -b <base>` together, e.g. `-p nova -b radix`, to fully skip
+prompts. Presets are separate from `-b`/base library choice.
+
+Also: `bun add <workspace-package-name>` fails with a 404 against the npm
+registry for internal `workspace:*` deps that aren't published — it won't
+auto-resolve them from the monorepo. Add every other dep with `bun add`
+first, then hand-edit `package.json` to add `"@scope/pkg": "workspace:*"`,
+and run `bun install` from the repo root to link it.
+
+## Radix/shadcn `Tabs` triggers sometimes ignore a plain `element.click()`
+
+Radix's `TabsTrigger` listens for pointer events, not just `click`. In
+automated/headless testing, a bare `btn.click()` can silently no-op on a
+`button[role="tab"]` while working fine on ordinary `<Button>`s. If a tab
+switch doesn't visibly happen after `.click()`, dispatch the full sequence
+instead:
+
 ```js
 const rect = btn.getBoundingClientRect();
 const opts = { bubbles: true, cancelable: true, clientX: rect.x+rect.width/2, clientY: rect.y+rect.height/2, pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0 };
@@ -61,8 +110,3 @@ btn.dispatchEvent(new PointerEvent('pointerup', opts));
 btn.dispatchEvent(new MouseEvent('mouseup', opts));
 btn.dispatchEvent(new MouseEvent('click', opts));
 ```
-Plain `<button>` elements (not Radix primitives) usually work fine with a direct `.click()`.
-
-## General lesson
-
-"No backend changes needed" is an assumption, not a fact, whenever a plan adds a *browser-based* consumer to a backend that previously only had server-to-server or same-origin clients. Verify CORS explicitly (a raw `curl -X OPTIONS` with an `Origin` header) before assuming the API surface is browser-ready.
