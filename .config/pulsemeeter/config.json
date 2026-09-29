@@ -8,10 +8,10 @@
 				"device_type": "sink",
 				"device_class": "virtual",
 				"volume": [
-					85,
-					85
+					100,
+					100
 				],
-				"mute": true,
+				"mute": false,
 				"flags": 0,
 				"external": false,
 				"primary": false,
@@ -24,7 +24,7 @@
 					"a": {
 						"1": {
 							"nick": "Speaker",
-							"state": false,
+							"state": true,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -122,8 +122,8 @@
 				"device_type": "sink",
 				"device_class": "virtual",
 				"volume": [
-					60,
-					60
+					100,
+					100
 				],
 				"mute": false,
 				"flags": 0,
@@ -138,7 +138,7 @@
 					"a": {
 						"1": {
 							"nick": "Speaker",
-							"state": false,
+							"state": true,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -172,7 +172,7 @@
 						},
 						"3": {
 							"nick": "H. Phones",
-							"state": true,
+							"state": false,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -252,7 +252,7 @@
 					"a": {
 						"1": {
 							"nick": "Speaker",
-							"state": false,
+							"state": true,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -286,7 +286,7 @@
 						},
 						"3": {
 							"nick": "H. Phones",
-							"state": true,
+							"state": false,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -478,7 +478,7 @@
 					"a": {
 						"1": {
 							"nick": "Speaker",
-							"state": false,
+							"state": true,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -572,8 +572,8 @@
 				"device_type": "source",
 				"device_class": "hardware",
 				"volume": [
-					0,
-					0
+					25,
+					25
 				],
 				"mute": false,
 				"flags": 0,
@@ -688,8 +688,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					100,
-					100
+					85,
+					85
 				],
 				"mute": true,
 				"flags": 0,
@@ -719,7 +719,7 @@
 					100,
 					100
 				],
-				"mute": true,
+				"mute": false,
 				"flags": 0,
 				"external": false,
 				"primary": null,
@@ -744,8 +744,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					50,
-					50
+					100,
+					100
 				],
 				"mute": false,
 				"flags": 0,
