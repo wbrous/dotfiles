@@ -1,47 +1,35 @@
 ---
 name: chromium-virtual-webauthn-security-key
-description: "User wants a fake/software YubiKey or security key for a website (e.g. ChatGPT, Apple): use Chromium's CDP virtual authenticator, not USB gadget/kernel work; covers PIN-sealed persistence, Enter plug/unplug toggle for phone-QR fallback, and bot-detection stealth."
+description: "User wants a fake/software YubiKey or security key for a website (e.g. ChatGPT, Apple sign-in, passkeys.io) on a laptop with no hardware key; Chromium virtual authenticator, PIN-sealed credentials, stealth, phone-QR fallback."
 ---
 
-# Software security key for a browser (Chromium CDP virtual authenticator)
+# Software security key for Chromium (what works, what does not)
 
-## Decision: do NOT go down the USB/kernel path
-- Laptops have no USB device controller (UDC); `/sys/class/udc` is empty. Cables, Limine edits and sudo don't change that.
-- `modprobe dummy_hcd` does give a virtual UDC and a gadget can enumerate as 1050:0407, but the stock Arch/omarchy kernels lack `f_hidg` (no userspace HID), so nothing can answer CTAPHID. A custom kernel plus a full CTAP2 responder would be needed. Not worth it.
-- No software PIV/CCID emulation exists that ykman/sudo/SSH accept. Browser WebAuthn is the realistic target.
-- Real answer: Chromium's DevTools `WebAuthn.*` virtual authenticator. Sites cannot tell it from a USB key.
+## Decide first
+- A real fake USB YubiKey is NOT feasible on a laptop. No UDC exists (`/sys/class/udc` empty), laptop USB-C is host-only, a cable between two host ports does nothing, and Limine/bootloader config cannot change that. `dummy_hcd` gives a UDC and a gadget enumerates as 1050:0407, but Arch kernels here have no `usb_f_hidg`, so no userspace can answer CTAPHID. Do not go down the kernel-build route. PIV/ykman/sudo/SSH cannot be emulated this way.
+- For websites in a browser, use Chromium's CDP WebAuthn virtual authenticator. No kernel work.
 
-## CDP gotchas (verified on Chromium 152)
-- Call `WebAuthn.enable` BEFORE `addVirtualAuthenticator`, else "Virtual Authenticator Environment has not been enabled".
-- chromedriver endpoint `/goog/cdp/execute` takes `{"cmd":..., "params":...}` (NOT `parameters`).
-- `getCredentials`/`addCredential` need `authenticatorId`. Options used: ctap2, ctap2_1, usb, hasResidentKey, hasUserVerification, isUserVerified, automaticPresenceSimulation=true.
-- WebAuthn needs a secure origin: use `http://localhost:PORT`, not `data:`.
-- Authenticator lives only in browser memory: persist `getCredentials` output, re-inject with `addCredential` next launch. Sign counts must be written back on exit.
-- Presence cannot be flipped on an already-waiting request; toggling `setAutomaticPresenceSimulation` mid-request does nothing.
+## Architecture that worked (`vykey`, installed at ~/.local/bin/vykey)
+- Launch `/usr/bin/chromium` with `--remote-debugging-pipe` (fds 3 read / 4 write, NUL-delimited JSON), NOT chromedriver. chromedriver injects `cdc_*` globals and gets bot-flagged by Cloudflare. Also pass `--disable-blink-features=AutomationControlled` (the pipe sets navigator.webdriver=true otherwise). Use a dedicated `--user-data-dir`; the default profile cannot be driven. Don't spoof UA/GPU/canvas.
+- Via CDP: `Target.getTargets` -> `Target.attachToTarget{flatten:true}` -> `WebAuthn.enable` -> `WebAuthn.addVirtualAuthenticator` (ctap2, ctap2_1, usb, hasResidentKey, hasUserVerification, isUserVerified) -> `WebAuthn.addCredential`. getCredentials/removeVirtualAuthenticator need `authenticatorId`. Chromedriver's `/goog/cdp/execute` uses key `params`, not `parameters`.
+- Credentials live only in browser memory, so persist them: `WebAuthn.getCredentials` while running, seal with `age --passphrase` under a PIN typed at launch, re-inject on next launch. Sign counts must be written back on exit.
+- age refuses passphrases from pipes: run it with a private pty as controlling terminal (setsid + TIOCSCTTY) and type the PIN into the master. The responder thread MUST be stopped (Event + join) BEFORE closing master_fd, else `OSError: Bad file descriptor`.
+- Close with `Browser.close` over the pipe and wait for the profile's SingletonLock owners to exit, or the next launch fails ("Chrome instance exited").
 
-## Persistence with a PIN
-- Seal credentials with `age --passphrase`. age only reads passphrases from a tty, so run it under a private pty (`pty.openpty`, `setsid` + `TIOCSCTTY` in preexec) and type the PIN into the master fd. Piping stdin does not work.
-- Atomic write (tmp + fsync + replace), mode 0600, dir 0700.
+## Presence / touch control
+- Chromium decides user presence when a request STARTS; flipping `setAutomaticPresenceSimulation` on an already-waiting request does nothing. To make a terminal keypress the touch: set `automaticPresenceSimulation:false`, inject (via `Page.addScriptToEvaluateOnNewDocument`) a script wrapping `navigator.credentials.create/get` that awaits a gate promise, then on keypress: presence ON -> release gate -> wait until in-flight==0 -> presence OFF.
+- Keys: `.` = touch (cbreak mode, no Enter), Enter = unplug/plug.
 
-## Phone-QR fallback: Enter toggles plugged/unplugged
-- Unplug = `WebAuthn.removeVirtualAuthenticator` AND `WebAuthn.disable`. Removing the authenticator alone leaves the request hanging with no dialog; disabling the environment too makes Chromium show its normal "Passkeys & Security Keys" dialog with the QR code (screenshot-verified).
-- Save `getCredentials` before removing; re-plug = `enable` + add authenticator + `addCredential` each.
-- A request left on the QR dialog stays stuck and later requests fail with OperationError; only `Page.reload` clears it. Track in-flight calls with an observe-only `Page.addScriptToEvaluateOnNewDocument` counter wrapping `navigator.credentials.create/get`; reload only when count > 0 on re-plug.
-- Virtual mode disables real transports, so QR phone completion needs the key unplugged; can't have both live at once.
-- Gating requests by wrapping `credentials.get` in a page promise was tried and abandoned (superseded by the toggle).
-
-## Stealth (sites like auth.openai.com sit behind Cloudflare "Verify you are human")
-- chromedriver injects `cdc_*` globals into pages: a known bot tell. Drive Chromium directly with `--remote-debugging-pipe` instead (fds 3 read / 4 write, NUL-terminated JSON, `Target.getTargets` then `Target.attachToTarget flatten:true`, send commands with `sessionId`). Same CDP, WebAuthn works, no cdc globals.
-- With a debugging pipe `navigator.webdriver` is true unless `--disable-blink-features=AutomationControlled` is passed. Verified false with it.
-- Close with `Browser.close`, then wait for the process; a leaked Chromium keeps the profile SingletonLock and the next launch dies ("Chrome instance exited").
-- Do not spoof UA/WebGL/canvas: inconsistency raises detection. Clear a poisoned profile dir (`rm -rf ~/.config/vykey/chromium-profile`) if Cloudflare remembered a challenge.
-- NOT verified: whether the pipe build actually passes ChatGPT's Cloudflare challenge. Could not get a meaningful result from the unauthenticated authorize URL.
+## Unplug => phone QR
+- Unplug = `WebAuthn.removeVirtualAuthenticator` AND `WebAuthn.disable`. Removing alone leaves Chromium hanging with no dialog; disabling the environment brings back the normal "Passkeys & Security Keys" dialog with QR. QR/hybrid needs real Bluetooth; Chromium's virtual mode disables real transports, so QR only works while unplugged.
+- A request left on the QR dialog stays stuck and later requests fail with `OperationError` until the page reloads. On re-plug, reload only if a request reached Chromium (in-flight and not merely held by the gate); a reload loses typed form text.
+- The gate script must be re-registered (remove old identifier, add new) on every plug/unplug so new documents start in the right state, and `window.__vykeyHold` toggled for the current document.
 
 ## Testing tips
-- Test with a real WebAuthn ceremony against a localhost page with register/login buttons; check same credential id signs in after restart and sign count increments.
-- Background `python3 -m http.server` dies with the launching shell; run it as a named managed service.
-- `sudo` here uses fingerprint auth; `sudo -n` fails. Ask the user to run privileged steps themselves.
-- Python deps are minimal: no `websocket`/`websockets`; chromedriver HTTP or the raw pipe avoid needing them.
+- Test pages must be on `localhost` (secure context); `data:` URLs throw TypeError. Start page servers as managed services; `&`-backgrounded servers die with the tool shell.
+- With the pipe transport there is no second DevTools client, so drive the test page by polling a command queue from the page itself, or test via the `Browser` class in-process.
+- sudo here uses fingerprint: `sudo -n` fails; ask the user to run `sudo -v` in their terminal.
 
-## Deliverable shape
-`~/.local/bin/vykey` with `init` (choose PIN), `launch [url]` (PIN prompt, own profile at `~/.config/vykey/chromium-profile`, Enter toggles plug), `status`. Works only in its own Chromium window, not the user's normal profile, and is invisible to ykman/sudo/SSH.
+## Unverified
+- Not confirmed on chatgpt.com/auth.openai.com (Cloudflare "Verify you are human" appeared with the chromedriver build; clearing `chromium-profile` and a manual click may be needed) or Apple. Attestation requirements may reject virtual keys.
+- Leftover unused artifacts the user may want removed: /etc/udev/rules.d/99-virtual-yubikey.rules, dummy_hcd gadget, /tmp/swytoken/*.
