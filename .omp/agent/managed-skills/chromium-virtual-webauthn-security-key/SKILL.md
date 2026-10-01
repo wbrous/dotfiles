@@ -1,30 +1,60 @@
 ---
 name: chromium-virtual-webauthn-security-key
-description: "Use for a fake/software YubiKey or security key for a website (e.g. ChatGPT, Apple, any WebAuthn/passkey \"add security key\" flow) on Linux/Chromium; covers PIN-gated software token, manual touch confirmation, multi-tab/popup support, and making the site recognize it as a real YubiKey model (AAGUID spoofing). Not for embedded-browser/headless automation unrelated to WebAuthn."
+description: "Use for a fake/software YubiKey or security key for a website (e.g. ChatGPT), driving Chromium's WebAuthn virtual authenticator over CDP; not embedded browser. Critical: never edit AAGUID/authData bytes after Chromium signs them."
 ---
 
-## Goal
-Make a site's "insert/touch your security key" WebAuthn flow work with a software-only key: PIN to unlock, manual touch confirmation from the terminal, works across every tab/popup the site opens, and the site recognizes it as a real hardware key (e.g. "YubiKey 5").
+## Context
 
-## Dead ends — don't retry these
-- **USB gadget mode (configfs/libcomposite/dummy_hcd) to spoof a real USB device**: requires a UDC (USB Device Controller) in silicon. Laptops/desktops with only host-mode xHCI controllers have `/sys/class/udc/` empty — `dummy_hcd` gives a *virtual* UDC usable only by the same kernel's own gadget stack, not something a browser's host-mode USB stack can see as external hardware. Dead end for "the OS sees a real YubiKey".
-- **CTAP2 HID gadget (`g_hid`/`f_hidg`) for a truly OS-level virtual authenticator**: needs `CONFIG_USB_F_HIDG` built as a module; not present in stock Arch/Omarchy kernels. Would require a custom kernel build (and rebuilding on every kernel update, or maintaining a patched PKGBUILD) plus writing a full CTAP2 responder from scratch. Disproportionate for this goal — Chromium's built-in virtual authenticator (below) gets the same result with no kernel work.
-- **chromedriver as the automation transport**: injects `cdc_*` globals into every page — a well-known bot-detection fingerprint (Cloudflare "Verify you are human" etc. will catch it). Use Chromium's own `--remote-debugging-pipe` instead (see below); it leaves no such fingerprint.
+Chromium exposes `WebAuthn.addVirtualAuthenticator` over the DevTools protocol, letting you drive a page's `navigator.credentials.create()/get()` as if a real roaming security key were attached — no USB gadget hardware needed (laptop USB4/xHCI controllers are host-only; `/sys/class/udc` is empty; forget hardware-level spoofing, it's a dead end).
 
-## Working architecture
-1. **Transport**: launch Chromium directly with `--remote-debugging-pipe` (fds 3/4, read/write JSON framed with `\0`), not chromedriver. Also pass `--disable-blink-features=AutomationControlled` and `excludeSwitches`-equivalent flags to keep `navigator.webdriver === false`.
-2. **The virtual authenticator is Chromium's own CDP `WebAuthn` domain** (`WebAuthn.enable`, `addVirtualAuthenticator` with `protocol: ctap2`, `hasResidentKey/hasUserVerification/isUserVerified: true`). This is the real, legitimate way to get a software FIDO2 key recognized by `navigator.credentials` — no custom crypto needed.
-3. **One authenticator per TAB, not shared**: `WebAuthn.enable`/`addVirtualAuthenticator` is scoped to a DevTools *session* (one per tab/frame target), not browser-wide — there is no `WebAuthn.enable` with `session=None`. A credential registered in one tab's authenticator does NOT exist in another tab's. To make "one logical key" work everywhere: give every tab its own virtual authenticator, and keep them in sync by reading `WebAuthn.getCredentials` from all of them, merging by `credentialId` (highest `signCount` wins), then `WebAuthn.clearCredentials` + `addCredential` to push the merged set back into every tab's authenticator after every touch/unplug/plug.
-4. **New tabs/popups need the SAME setup as the first tab**: enable `Target.setAutoAttach` with `waitForDebuggerOnStart: true, flatten: true` at the **browser level** (`session=None`) in `__enter__`, not just on the first page — this is what catches `window.open()`/`target=_blank` tabs and cross-origin iframes alike, not just child frames of one page. Install the gate script and give the new target its own virtual authenticator *before* resuming it (`Runtime.runIfWaitingForDebugger`), so its first script already runs behind the gate.
-5. **Manual touch confirmation**: inject a `Page.addScriptToEvaluateOnNewDocument` script into every attached target that wraps `navigator.credentials.create`/`get`: if a `hold` flag is set, the call is parked on an unresolved Promise and `window.__vykeyHeld = {method, site}` is set; a `window.__vykeyGo()` function (called from Python via `Runtime.evaluate` after the real keypress) releases it. Set `automaticPresenceSimulation: false` on the authenticator so Chromium itself never answers without this; "touching" the key = flip `setAutomaticPresenceSimulation(true)`, call `__vykeyGo()`, wait for the in-flight counter to drop, flip presence back to `false`.
-6. **Plug/unplug (fall back to phone QR code)**: `unplug` = remove the virtual authenticator + `WebAuthn.disable` in every tab, AND clear the page-side `hold` flag so new calls go straight to Chromium's native dialog (which offers the phone/QR flow since no virtual key is present). `plug` = re-enable + re-add authenticators + restore the hold flag. If a request already reached Chromium's native dialog while unplugged (not merely held in JS), re-plugging requires a `Page.reload()` of that tab — Chromium otherwise permanently rejects new WebAuthn calls on that document with `OperationError`. Only reload when actually stuck (track with an injected `__vykeyInFlight` counter), not on every toggle, since reload destroys page state.
-7. **Making the site think it's a real YubiKey (AAGUID spoofing)**: Chromium's virtual authenticator always stamps a fixed internal test AAGUID (`01020304-0506-0708-0102-030405060708`) with no API to change it. Sites that show "which key is this" (ChatGPT, GitHub, etc.) read this AAGUID and look it up in a public list (e.g. github.com/passkeydeveloper/passkey-authenticator-aaguids) — this is cosmetic metadata, not cryptographically verified for `attestation: "none"`/most consumer flows. Fix: in the same injected gate script, after `create()` resolves, patch the AAGUID bytes **in place** in the real response: get `response.getAuthenticatorData()` (ArrayBuffer), find it as a verbatim byte sequence inside `response.attestationObject` (CBOR byte-strings store raw bytes — no need to parse CBOR), AAGUID is bytes 37-53 of authenticatorData (after 32-byte rpIdHash + 1 flags + 4 counter), overwrite those 16 bytes in both the standalone copy and the copy embedded in attestationObject, then `Object.defineProperty(response, 'attestationObject', {value: patched, configurable: true})` and same for `getAuthenticatorData` (these are prototype getters; `defineProperty` creates an own property that shadows them). Only applies to `create()` — `get()`/assertion authenticatorData never contains an AAGUID (only present when the AT flag is set, i.e. only during registration). Only do this when `attestationFlags & 0x40` (AT bit) is set. Real YubiKey AAGUIDs are published (e.g. `fa2b99dc-9e39-4257-8f92-4a30d23c4118` = "YubiKey 5 Series with NFC").
+A full implementation (`vykey.py`) does this:
+- `Target.setAutoAttach` + `waitForDebuggerOnStart` + `flatten` to gate every new tab/iframe before its first script runs
+- `Page.addScriptToEvaluateOnNewDocument` installs a JS shim overriding `navigator.credentials.create/get` to gate on a terminal touch (Enter/`.` keypress) before calling through, and to patch the resulting credential's AAGUID
+- Credentials sealed at rest with `age --passphrase`, PIN typed through a private pty (age refuses passphrases from a pipe)
+- Single-threaded CDP command loop: one thread only ever calls `_send`/`touch()`, since two threads reading the same JSON-over-pipe connection race for replies
 
-## Known limitation
-This changes what the credential *claims* to be, not a cryptographically-verified hardware identity — `fmt` stays `"none"`, no real Yubico attestation certificate chain. Sites doing full enterprise-grade attestation chain verification (rare for consumer login flows) will still reject it. Fine for "the site shows a friendly YubiKey icon/name", not fine for anything that validates a trust-anchored cert against FIDO MDS.
+## Critical gotcha: never edit a signed attestation after the fact
 
-## Testing gotchas
-- **Thread safety**: the pipe-transport `Browser` class is NOT thread-safe — `_send`/`_read_message` must only be called from one thread. The real CLI (`cmd_launch`) is naturally single-threaded (one main loop; a second thread only reads stdin into a queue, never touches the Browser). If writing a test harness that needs to "fire a WebAuthn call, then touch it from the same process", do NOT spawn a background thread to call `touch()` while the main thread blocks in `Runtime.evaluate` with `awaitPromise: true` — two threads reading the same pipe race and corrupt each other's replies, causing mysterious hangs/timeouts that look like a product bug but are a test-harness bug. Instead: fire the async JS without `awaitPromise` (so the call returns immediately), then poll a `window.__done` flag and call `touch()` from the *same* thread.
-- **"Hang" symptoms are often just a dead test HTTP server**, not a code bug: if a page shows `chrome-error://chromewebdata/`, `navigator.credentials` is `undefined` because there's no page at all. Background `python3 -m http.server` with `&` inside a one-off bash command dies when that command's shell exits; use the bash tool's named/managed-service mode (`name=`, `ready=`) for test servers that must outlive one tool call, not inline `&`.
-- **NEVER run broad `pkill -f <generic-name>`** (e.g. `pkill -9 -f chromium`) to clean up test browsers — it matches and kills unrelated real user applications (Discord, Cider, any Electron/Chromium-based app). Always scope kill patterns to the specific test profile path (e.g. `pkill -f "user-data-dir=/tmp/myproject"` or the specific `VYKEY_DIR`/tempdir used), never a bare product name.
-- CDP gotchas specific to this work: the DevTools HTTP/CDP command key is `"params"`, not `"parameters"`, when going through chromedriver's `/goog/cdp/execute`; `WebAuthn.addVirtualAuthenticator`/`getCredentials`/etc. require `WebAuthn.enable` first in that session or you get "Virtual Authenticator Environment has not been enabled"; `Target.getFrameTree`/manually attaching to iframes is unnecessary — `Target.setAutoAttach` with `waitForDebuggerOnStart: true` at the browser level handles tabs, popups, and iframes uniformly through `Target.attachedToTarget` events.
+Chromium's virtual authenticator's `MakeCredential` (`create()`) response is `fmt: "packed"`, **signed** by a fixed, well-known hardcoded "Chromium / Authenticator Attestation / Batch Certificate" key. The signature covers `authenticatorData` byte-for-byte (which embeds the 16-byte AAGUID at offset 37).
+
+If you want the credential to claim a specific device identity (e.g. a real YubiKey AAGUID like `fa2b99dc-9e39-4257-8f92-4a30d23c4118` for "YubiKey 5 Series with NFC", from https://github.com/passkeydeveloper/passkey-authenticator-aaguids) **do not** byte-patch the AAGUID inside the already-signed `authData`/`attestationObject`. This silently produces a cryptographically invalid attestation. It will pass every local test you write yourself (byte search, roundtrip, decoding) because none of those verify the signature — but a real relying party that checks it (confirmed with OpenAI/ChatGPT: `passkey_verification_failed`, HTTP 400) will reject it outright.
+
+**Prove this class of bug before shipping a WebAuthn credential mutation**: decode the real CBOR attestationObject, extract `attStmt.sig` and `attStmt.x5c[0]`, and verify the signature over `authData + sha256(clientDataJSON)` with `openssl pkeyutl -verify -pubin -inkey <(openssl x509 -in cert.der -inform der -noout -pubkey) -sigfile sig.der -rawin -digest sha256`. If you don't have a CBOR library available and can't install one (no sudo, no pip), hand-roll a ~40-line recursive CBOR decoder (majors 0/1/2/3/4/5/7 cover a WebAuthn attestationObject) rather than skip verification.
+
+**Fix: rebuild as `fmt: "none"` instead of patching signed bytes.** `attStmt: {}` has no signature to invalidate, and this is the exact attestation downgrade real browsers perform when a site's conveyance preference doesn't require a full chain. Every WebAuthn server library reads the AAGUID from `authData` regardless of attestation format, so the device identity still shows up correctly, but there is no signature to break:
+
+```js
+function cborBytesHeader(len) {
+  if (len < 24) return [0x40 | len];
+  if (len < 256) return [0x58, len];
+  if (len < 65536) return [0x59, (len >> 8) & 0xff, len & 0xff];
+  return [0x5a, (len>>>24)&255, (len>>>16)&255, (len>>>8)&255, len&255];
+}
+function buildNoneAttestationObject(authData) {
+  const head = [
+    0xA3,
+    0x63,0x66,0x6d,0x74,                               // "fmt"
+    0x64,0x6e,0x6f,0x6e,0x65,                          // "none"
+    0x67,0x61,0x74,0x74,0x53,0x74,0x6d,0x74,           // "attStmt"
+    0xA0,                                                // {}
+    0x68,0x61,0x75,0x74,0x68,0x44,0x61,0x74,0x61,      // "authData"
+    ...cborBytesHeader(authData.length),
+  ];
+  const out = new Uint8Array(head.length + authData.length);
+  out.set(head, 0); out.set(authData, head.length);
+  return out.buffer;
+}
+// patch AAGUID in a *copy* of authData at offset 37 (16 bytes), then:
+Object.defineProperty(resp, 'attestationObject', { value: buildNoneAttestationObject(patchedAuthData), configurable: true });
+Object.defineProperty(resp, 'getAuthenticatorData', { value: () => patchedAuthData.buffer, configurable: true });
+```
+
+Chromium's internal authenticator store is unaffected by these JS-level property overrides on the returned `response` object — it still holds the real generated keypair/sign-counter, so later `get()` assertions against the same credential continue to work normally.
+
+## Other pitfalls hit along the way
+
+- **Site-specific attestation requirements are opaque until tested live.** You cannot infer from a generic 400 error alone whether the failure is attestation signature validation, AAGUID mismatch, or something else — get the actual failing request/response (e.g. from the user's browser devtools network tab or a captured curl) and decode it yourself rather than guessing.
+- **`navigator.credentials` reads `undefined` on a page**: check `location.href` first — a `chrome-error://chromewebdata/` means the backing HTTP server for your test page wasn't actually up (race between starting it and loading), not a WebAuthn or secure-context bug.
+- **Concurrent CDP calls from two threads deadlock/race.** If a test needs to simulate the terminal's `touch()` happening *during* an in-flight `create()`/`get()`, don't call `touch()` from a background thread while blocking on the browser reply in the main thread — fire the WebAuthn call without `awaitPromise`, poll a `window.__done` flag from the single main thread, call `touch()` from that same thread in between polls.
+- **`pkill -9 -f <generic-substring>`** (e.g. `"chromium"`) kills every matching process on the machine, including unrelated running apps (Discord, Electron apps). Always scope kill patterns to your own test paths (profile dir, `VYKEY_DIR` value, a unique marker in the command line), never a bare technology name.
+- Installing `cbor2`/`cryptography` via `pip` can fail entirely (`No module named pip`) in minimal environments, and `sudo pacman` needs an interactive password/fingerprint prompt that isn't always available — have a fallback (hand-rolled CBOR decoder, `openssl` CLI for signature verification) that needs no new dependencies.
