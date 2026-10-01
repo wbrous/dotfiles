@@ -1,41 +1,36 @@
 ---
 name: chromium-virtual-webauthn-security-key
-description: "User wants a fake/software YubiKey or security key for a website (e.g. ChatGPT, passkeys.io, Apple) on Linux; Chromium CDP virtual authenticator with PIN-sealed store and Enter-to-touch; not USB gadget/PIV."
+description: "User wants a fake/software YubiKey or security key for a website (e.g. ChatGPT, Apple, passkeys.io) in Chromium; no hardware key, USB gadget route fails."
 ---
 
 # Software security key for Chromium (no hardware, no kernel work)
 
-## Decision (verified on Framework laptop, Arch, Chromium 152)
-- Do NOT go down the USB-gadget route. Laptop xHCI ports are host-only (no UDC; `/sys/class/udc` empty), cables/Limine can't change that. `dummy_hcd` gives a fake UDC and enumerates as 1050:0407, but the kernels lack `CONFIG_USB_F_HIDG` (no userspace HID), so nothing answers CTAPHID. Needs custom kernel + a full CTAP2 responder. Not worth it.
-- PIV/ykman/sudo/SSH cannot be satisfied by software this way. Only websites (WebAuthn) in Chromium.
-- Use Chromium's CDP **virtual authenticator** driven via chromedriver (versions must match; `chromedriver` ships on Omarchy).
+## Decision: do NOT do a USB gadget / kernel build
+- Laptops have no UDC; `/sys/class/udc` is empty, a cable or Limine edit cannot add one.
+- `dummy_hcd` does give a UDC and a gadget enumerates as 1050:0407, but the kernel lacks `f_hidg` (no `/dev/hidgX`), so nothing can answer CTAPHID. A custom kernel plus CTAP2 responder is huge and must be rebuilt per kernel.
+- PIV/ykman/sudo/SSH cannot be spoofed this way. Browser WebAuthn can: use Chromium's CDP virtual authenticator.
 
-## CDP gotchas (chromedriver `POST /session/<id>/goog/cdp/execute`)
-- Body key is `params`, NOT `parameters` ("params not passed").
-- Call `WebAuthn.enable` BEFORE `addVirtualAuthenticator` ("environment not enabled").
-- `getCredentials`/`addCredential` need `authenticatorId`.
-- WebAuthn needs a secure origin: use `http://localhost:PORT` (data: URLs give TypeError). A page server started with `&` in a bash call dies; run it as a managed service.
-- Authenticator lives only in browser memory: persist `getCredentials` output and re-inject with `addCredential` next launch (sign counts increment, verified 1->2).
-- Chromium refuses CDP on the default profile; use a dedicated `--user-data-dir`.
-- Session teardown: `DELETE /session/<id>` first, then kill chromedriver, then wait until no process has `--user-data-dir=PROFILE` (else orphan holds SingletonLock and next start says "Chrome instance exited").
-- `excludeSwitches: ["enable-automation"]` plus `--disable-blink-features=AutomationControlled` to look less automated.
+## Mechanism
+chromedriver (version must match chromium) + plain HTTP, no websocket lib needed:
+- Start `chromedriver --port=P --allowed-ips=127.0.0.1`, POST `/session` with `goog:chromeOptions` (binary `/usr/bin/chromium`, `excludeSwitches:["enable-automation"]`, own `--user-data-dir`; default profile is blocked).
+- CDP via `POST /session/<id>/goog/cdp/execute` with body `{"cmd": ..., "params": {...}}` (key is `params`, NOT `parameters`).
+- Order: `WebAuthn.enable` first, then `addVirtualAuthenticator` (ctap2, ctap2_1, usb, hasResidentKey, hasUserVerification, isUserVerified, automaticPresenceSimulation true). `getCredentials`/`addCredential` need `authenticatorId`.
+- Virtual authenticator lives only in browser memory: persist `getCredentials` output, re-inject with `addCredential` next launch (sign counts continue). Seal the store with `age --passphrase`; age reads passphrase only from a tty, so drive it through a private pty (`pty.openpty`, `setsid` + `TIOCSCTTY` in preexec_fn, write the PIN to the master when it prompts).
+- Close the browser by `DELETE /session/<id>` before killing chromedriver, then wait until no process has the profile as user-data-dir, else the next launch fails on SingletonLock.
+- WebAuthn needs a secure origin (localhost or https), not `data:` URLs.
 
-## PIN-sealed store
-- `age --passphrase` refuses non-tty passphrases. Run age in a child with a private pty as controlling terminal (`os.setsid` + `TIOCSCTTY` in preexec) and write the PIN to the pty master when it prompts. Wrong PIN => nonzero exit.
-- `age-keygen` prints secret key on stdout, public on stderr; stdout starts with a `# created:` comment (don't `startswith` check the whole blob).
-- `subprocess.run` cannot take both `stdin=` and `input=`.
+## Phone QR vs virtual key (the user's real need)
+- With an authenticator attached, Chromium never shows the QR/hybrid dialog and the "sign in with iPhone" flow does not complete.
+- Unplug = `removeVirtualAuthenticator` AND `WebAuthn.disable`. Removing alone leaves a request hanging with no dialog; adding `disable` makes the normal "Passkeys & Security Keys" dialog with QR appear (verified by screenshot with `grim`).
+- Plug = `enable` + `addVirtualAuthenticator` + `addCredential` for each saved credential.
+- A request left pending on the QR dialog poisons the page: every later request fails with OperationError, even after re-plug. Only `Page.reload` clears it. Detect with an observe-only script (`Page.addScriptToEvaluateOnNewDocument` counting unsettled `navigator.credentials.create/get` promises) and reload only when something is in flight.
+- `setAutomaticPresenceSimulation` cannot be toggled on a pending request (presence is decided at request start); a "press Enter to touch" design needs a JS gate wrapper and is clumsier than plug/unplug. User chose the Enter plug/unplug toggle.
 
-## Enter-to-touch (on-demand presence)
-- Chromium decides presence when a request STARTS; enabling `setAutomaticPresenceSimulation` mid-wait does not rescue a pending request (verified: NotAllowedError after timeout).
-- So: create the authenticator with `automaticPresenceSimulation: false`, inject via `Page.addScriptToEvaluateOnNewDocument` a wrapper around `navigator.credentials.create/get` (publicKey only) that holds the call behind a promise and exposes `window.__vykeyPending` / `window.__vykeyGo()`. On Enter: presence on -> `__vykeyGo()` -> wait pending cleared -> short sleep -> presence off.
-- Poll `__vykeyPending` and print "<site> wants to register/sign in; press Enter". Enter with nothing pending does nothing.
+## Final tool shape
+`vykey init` (choose PIN), `vykey launch [url]` (type PIN; starts plugged in; Enter toggles plug/unplug; Ctrl-C or closing the window saves credentials back, sealed). Installed to `~/.local/bin/vykey`.
 
-## Limits to tell the user
-- Works only in the Chromium window launched by the tool (own profile), invisible to system/ykman.
-- Phone QR (hybrid/caBLE, e.g. Apple "sign in with iPhone") does not complete with the virtual authenticator attached: Bluetooth/real transports are disabled. Offer a `--phone` mode (same profile, no virtual key) instead. Not yet built as of last session.
-- Back up the sealed credentials file; sites may reject non-hardware attestation.
-- Testing a normal Chromium window shows the "insert security key" dialog; that is NOT the tool's window.
+## Testing recipe
+Run the real CLI under `pty.fork`, find the chromedriver session via `GET /sessions`, drive page buttons with `/execute/sync`. Serve the test page from a managed background service (a `&` server dies with its shell). Take screenshots to check dialogs.
 
-## Reference implementation
-`~/.local/bin/vykey` (init / launch [url] / status), state in `~/.config/vykey`, source was /tmp/swytoken/vykey.py (~450 lines).
-- Sudo here is fingerprint-based; `sudo -n` fails, ask the user to run sudo steps themselves.
+## Caveats to tell the user
+Only the Chromium window launched by vykey has the key, not the system (no ykman/sudo). Back up the sealed credentials file; sites may reject virtual authenticators that demand hardware attestation. Sudo here uses fingerprint: `sudo` needs the user to touch the reader; if it times out, ask the user to run it.
