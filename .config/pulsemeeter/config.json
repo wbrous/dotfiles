@@ -23,8 +23,8 @@
 				"connections": {
 					"a": {
 						"1": {
-							"nick": "Speaker",
-							"state": false,
+							"nick": "Int Spkrs",
+							"state": true,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -40,24 +40,7 @@
 							"use_loopback": false
 						},
 						"2": {
-							"nick": "Arena 7",
-							"state": false,
-							"latency": null,
-							"auto_ports": true,
-							"input_sel_channels": [
-								true,
-								true
-							],
-							"output_sel_channels": [
-								true,
-								true
-							],
-							"port_map": [],
-							"route_volume": 100,
-							"use_loopback": false
-						},
-						"3": {
-							"nick": "H. Phones",
+							"nick": "Ext Spkrs",
 							"state": true,
 							"latency": null,
 							"auto_ports": true,
@@ -137,8 +120,8 @@
 				"connections": {
 					"a": {
 						"1": {
-							"nick": "Speaker",
-							"state": false,
+							"nick": "Int Spkrs",
+							"state": true,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -154,24 +137,7 @@
 							"use_loopback": false
 						},
 						"2": {
-							"nick": "Arena 7",
-							"state": false,
-							"latency": null,
-							"auto_ports": true,
-							"input_sel_channels": [
-								true,
-								true
-							],
-							"output_sel_channels": [
-								true,
-								true
-							],
-							"port_map": [],
-							"route_volume": 100,
-							"use_loopback": false
-						},
-						"3": {
-							"nick": "H. Phones",
+							"nick": "Ext Spkrs",
 							"state": true,
 							"latency": null,
 							"auto_ports": true,
@@ -251,8 +217,8 @@
 				"connections": {
 					"a": {
 						"1": {
-							"nick": "Speaker",
-							"state": false,
+							"nick": "Int Spkrs",
+							"state": true,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -268,24 +234,7 @@
 							"use_loopback": false
 						},
 						"2": {
-							"nick": "Arena 7",
-							"state": false,
-							"latency": null,
-							"auto_ports": true,
-							"input_sel_channels": [
-								true,
-								true
-							],
-							"output_sel_channels": [
-								true,
-								true
-							],
-							"port_map": [],
-							"route_volume": 100,
-							"use_loopback": false
-						},
-						"3": {
-							"nick": "H. Phones",
+							"nick": "Ext Spkrs",
 							"state": true,
 							"latency": null,
 							"auto_ports": true,
@@ -365,7 +314,7 @@
 				"connections": {
 					"a": {
 						"1": {
-							"nick": "Speaker",
+							"nick": "Int Spkrs",
 							"state": false,
 							"latency": null,
 							"auto_ports": true,
@@ -382,24 +331,7 @@
 							"use_loopback": false
 						},
 						"2": {
-							"nick": "Arena 7",
-							"state": false,
-							"latency": null,
-							"auto_ports": true,
-							"input_sel_channels": [
-								true,
-								true
-							],
-							"output_sel_channels": [
-								true,
-								true
-							],
-							"port_map": [],
-							"route_volume": 100,
-							"use_loopback": false
-						},
-						"3": {
-							"nick": "H. Phones",
+							"nick": "Ext Spkrs",
 							"state": false,
 							"latency": null,
 							"auto_ports": true,
@@ -477,8 +409,8 @@
 				"connections": {
 					"a": {
 						"1": {
-							"nick": "Speaker",
-							"state": false,
+							"nick": "Int Spkrs",
+							"state": true,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -493,23 +425,7 @@
 							"use_loopback": false
 						},
 						"2": {
-							"nick": "Arena 7",
-							"state": false,
-							"latency": null,
-							"auto_ports": true,
-							"input_sel_channels": [
-								true
-							],
-							"output_sel_channels": [
-								true,
-								true
-							],
-							"port_map": [],
-							"route_volume": 100,
-							"use_loopback": false
-						},
-						"3": {
-							"nick": "H. Phones",
+							"nick": "Ext Spkrs",
 							"state": true,
 							"latency": null,
 							"auto_ports": true,
@@ -567,13 +483,13 @@
 		"hi": {
 			"1": {
 				"name": "alsa_input.pci-0000_c1_00.6.analog-stereo",
-				"nick": "Mic",
+				"nick": "Mic In",
 				"description": "Ryzen HD Audio Controller Analog Stereo",
 				"device_type": "source",
 				"device_class": "hardware",
 				"volume": [
-					25,
-					25
+					30,
+					30
 				],
 				"mute": false,
 				"flags": 0,
@@ -587,7 +503,7 @@
 				"connections": {
 					"a": {
 						"1": {
-							"nick": "Speaker",
+							"nick": "Int Spkrs",
 							"state": false,
 							"latency": null,
 							"auto_ports": true,
@@ -604,24 +520,7 @@
 							"use_loopback": false
 						},
 						"2": {
-							"nick": "Arena 7",
-							"state": false,
-							"latency": null,
-							"auto_ports": true,
-							"input_sel_channels": [
-								true,
-								true
-							],
-							"output_sel_channels": [
-								true,
-								true
-							],
-							"port_map": [],
-							"route_volume": 100,
-							"use_loopback": false
-						},
-						"3": {
-							"nick": "H. Phones",
+							"nick": "Ext Spkrs",
 							"state": false,
 							"latency": null,
 							"auto_ports": true,
@@ -683,7 +582,7 @@
 		"a": {
 			"1": {
 				"name": "alsa_output.pci-0000_c1_00.6.analog-stereo",
-				"nick": "Speaker",
+				"nick": "Int Spkrs",
 				"description": "Ryzen HD Audio Controller Analog Stereo",
 				"device_type": "sink",
 				"device_class": "hardware",
@@ -691,7 +590,7 @@
 					100,
 					100
 				],
-				"mute": false,
+				"mute": true,
 				"flags": 0,
 				"external": false,
 				"primary": null,
@@ -710,44 +609,16 @@
 				]
 			},
 			"2": {
-				"name": "bluez_output.28_9A_4B_B2_97_6B.1",
-				"nick": "Arena 7",
-				"description": "SteelSeries Arena 7",
+				"name": "alsa_output.pci-0000_c1_00.6.analog-stereo",
+				"nick": "Ext Spkrs",
+				"description": "Ryzen HD Audio Controller Analog Stereo",
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
 					100,
 					100
 				],
-				"mute": false,
-				"flags": 0,
-				"external": false,
-				"primary": null,
-				"channels": 2,
-				"channel_list": [
-					"FL",
-					"FR"
-				],
-				"connections": {
-					"a": {},
-					"b": {}
-				},
-				"selected_channels": [
-					true,
-					true
-				]
-			},
-			"3": {
-				"name": "bluez_output.7C_F3_4D_85_6B_C2.1",
-				"nick": "H. Phones",
-				"description": "Wils\u2019s AirPods Pro",
-				"device_type": "sink",
-				"device_class": "hardware",
-				"volume": [
-					94,
-					94
-				],
-				"mute": false,
+				"mute": true,
 				"flags": 0,
 				"external": false,
 				"primary": null,
