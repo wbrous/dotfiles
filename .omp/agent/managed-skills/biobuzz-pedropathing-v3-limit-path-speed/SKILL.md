@@ -1,21 +1,20 @@
 ---
 name: biobuzz-pedropathing-v3-limit-path-speed
-description: When capping speed during Pedro Pathing v3 path without setMaxPower; read user-preference warning first.
+description: When capping or slowing speed during a Pedro Pathing v3 path in Biobuzz autos; read the user-preference warning before adding any speed limiter.
 ---
 
-# Limiting path speed in Pedro Pathing v3 (core 3.0.0)
+# Limiting path speed in Pedro Pathing v3 (Biobuzz)
 
-## User preference (Biobuzz, learned 2026-10-04)
-User asked to "slow down linearly approaching refuel" in BozoAuto. Both attempts were rejected and reverted:
-1. Per-loop linear ramp via `Constants.foresightConfig.maxPathSpeed.set(...)` with helper + tunables: rejected as overbuilt.
-2. One-shot cap before the refuel leg + reset after: also rejected ("none of this constants editing stuff"); user chose to leave the auto with no slowdown.
+## User preference (read first)
+In BozoAuto the user rejected every speed-limiting attempt: a linear slowdown helper, then a one-shot cap, both of which edited `Constants.foresightConfig.maxPathSpeed`. Their words: make it as SIMPLE as possible, "none of this constants editing stuff", KISS. The final state was NO slowdown. Do not re-add global-config edits, helper functions, new Tunables, or per-loop limiters unprompted. If asked again, ask which approach they want before writing code, and keep it to a few lines.
 
-Do NOT reach for `Constants.foresightConfig` mutation or tunable-heavy ramps here. If asked again, propose the simplest option first and ask; the unexplored alternative is `follower.manual(DrivePowers)` scaled by `follower.remainingDistance()` during the leg.
+## Verified API facts (core 3.0.0, from javap)
+- `Follower` has no `setMaxPower`. It has `follow`, `hold`, `manual(DrivePowers)`, `isBusy`, `remainingDistance()`, `pose()`.
+- Speed limits live in `ForesightConfig` (shared static `Constants.foresightConfig` in Biobuzz): `maxPathSpeed`, `maxVelocityConstraint`, etc. are `ConfigVar<Double>`, default `ForesightConfig.Constraint.NONE` (Infinity), validated positive, so 0 is rejected.
+- `maxPathSpeed` is read inside `Foresight.coast`, multiplied by a velocity term (appears to be a fraction). Not run on a robot, so treat as unconfirmed.
+- Because the config is a shared static, any change persists across OpModes unless reset in init/stop.
 
-## Facts (from javap of core-3.0.0.jar, never verified on a robot)
-- Follower has no `setMaxPower`. Follower API: `follow`, `hold`, `manual(DrivePowers)`, `isBusy`, `remainingDistance()`, `pose()`.
-- `ForesightConfig.maxPathSpeed` (`ConfigVar<Double>`, default `Constraint.NONE` = Infinity, validator positive) is read in `Foresight.coast` and is used as a fraction of current speed bound (`min(v, maxPathSpeed * x)`); `maxVelocityConstraint` is an absolute bound.
-- `Constants.foresightConfig` is a shared static, so any set() leaks across OpModes unless reset in init()/stop().
-- `Path.with(Modifier...)` plus `ConfigVar.at(value)` gives a per-path scoped modifier (apply/revert), avoiding global mutation; untested.
-- Offline compile check: `./gradlew --offline :TeamCode:compileDebugJavaWithJavac -q` (about 2s). BozoAuto cannot be loaded in plain java (needs FTC SDK).
-- Pitfall: `git diff` baseline may already contain experimental code if the user's `style:` commit swept it in; check `git diff HEAD`.
+## Other lessons
+- `HEAD` may already contain your earlier edits (user ran a formatter commit); diff against HEAD before assuming a clean baseline.
+- When using multi-op edits, line numbers shift between ops; re-read the file after each batch.
+- Don't run filesystem-wide `find` in bash; it backgrounds for 300s.
