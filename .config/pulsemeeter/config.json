@@ -587,8 +587,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					100,
-					100
+					65,
+					65
 				],
 				"mute": true,
 				"flags": 0,
@@ -609,16 +609,16 @@
 				]
 			},
 			"2": {
-				"name": "alsa_output.pci-0000_c1_00.6.analog-stereo",
+				"name": "bluez_output.7C_F3_4D_85_6B_C2.1",
 				"nick": "Ext Spkrs",
-				"description": "Ryzen HD Audio Controller Analog Stereo",
+				"description": "Wils\u2019s AirPods Pro",
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					100,
-					100
+					61,
+					61
 				],
-				"mute": true,
+				"mute": false,
 				"flags": 0,
 				"external": false,
 				"primary": null,
