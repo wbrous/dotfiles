@@ -11,11 +11,11 @@
 # rewritten (that would rewrite published history).
 #
 # "Unpushed" = commits in the range (remote ref oid)..HEAD. All-zeros remote
-# oid = brand-new branch -> ALL local commits are unpushed (resign from --root).
+# oid = brand-new branch -> every commit not reachable from a remote ref.
 #
-# Signing is one `git rebase --exec 'git commit --amend --no-edit -S'` over the
-# unpushed range, replaying each uncovered commit and amending it with a fresh
-# GPG signature (preserves linear/merge topology via --rebase-merges).
+# Only commits AUTHORED BY `git config user.email` are signed; other authors'
+# commits are never rewritten (see ~/.local/bin/git-resign-own, which does the
+# work and refuses if signing yours would force rewriting theirs).
 #
 # After resigning we EXIT 1 to abort the in-flight push (rewriting mid-transport
 # is unsafe — the refs git is about to send are already resolved). The user re-
@@ -33,62 +33,30 @@ set -u
 [ "${GIT_PRE_PUSH_RESIGNED:-}" = "1" ] && exit 0
 
 # pre-push stdin: "<local-ref> <local-oid> <remote-ref> <remote-oid>" per line
-NCOMMITS=0
-MSG=""
 while IFS=' ' read -r local_ref local_oid remote_ref remote_oid; do
   [ -z "$local_ref" ] && continue
   # Skipping a deletion (nothing to push).
   [ "$local_oid" = "0000000000000000000000000000000000000000" ] && continue
 
-  # Base for the unpushed range.
+  # Which commits are "unpushed": remote oid..local, or (brand-new branch) all
+  # commits no remote ref contains. git-resign-own signs only the ones authored
+  # by user.email and refuses rather than rewrite other authors' commits.
+  before="$(git rev-parse HEAD)"
   if [ "$remote_oid" = "0000000000000000000000000000000000000000" ]; then
-    # Brand-new branch: sign the entire local history from the root.
-    base_arg="--root"
-    # Verify there is actually a root to rebase.
-    root="$(git rev-list --max-parents=0 "$local_oid" 2>/dev/null | head -n1)"
-    [ -z "$root" ] && continue
-    # All local commits are unpushed; they are unsigned unless already signed.
-    range="$local_oid"
+    git-resign-own --new-branch || exit 1
   else
-    base_arg="$remote_oid"
-    # Stop early if remote already contains everything local (up to date).
-    range="$(git rev-list "$remote_oid".."$local_oid" 2>/dev/null || true)"
-    [ -z "$range" ] && continue
+    git-resign-own "$remote_oid" || exit 1
   fi
 
-  # Keep only UNSIGNED unpushed commits. Prefer checking the commit object
-  # for a `gpgsig` header over `git log %G?`: %G? returns E (can't verify —
-  # missing/unknown key) for a signed commit when that key isn't present,
-  # which would wrongly skip it. A commit is unsigned iff its object has no
-  # `gpgsig` header at all.
-  unsigned="$(printf '%s\n' "$range" | while read -r sha; do
-    [ -z "$sha" ] && continue
-    git cat-file -p "$sha" 2>/dev/null | grep -q '^gpgsig' || echo "$sha"
-  done)"
-  [ -z "$unsigned" ] && continue
-
-  MSG="${MSG}${MSG:+ }${local_ref}->${remote_ref}"
-  NCOMMITS=$((NCOMMITS + $(printf '%s\n' "$unsigned" | grep -c .)))
-
-  # Sign every unpushed unsigned commit via one rebase-and-amend pass.
-  # shellcheck disable=SC2086
-  if ! git rebase $base_arg --rebase-merges --exec 'git commit --amend --no-edit -S' --autostash 2>&1; then
-    echo "pre-push: ERROR — resign rebase failed. Resolve conflicts, then re-run git push." >&2
+  # Rebase rewrote HEAD -> abort so the re-push uses the new refs. One resign
+  # pass per push; the re-push recomputes fresh.
+  if [ "$(git rev-parse HEAD)" != "$before" ]; then
+    echo
+    echo "pre-push: re-signed your unpushed commits on ${local_ref}->${remote_ref}."
+    echo "pre-push: THIS push was ABORTED so the rewritten refs take effect."
+    echo "pre-push: re-run the push command to push the now-signed commits."
+    echo "pre-push: (for the one-command flow, use \`dotfiles push\` — dotfiles-push handles it.)"
     exit 1
   fi
-
-  # One resign pass per push, then abort so the re-push uses the new refs.
-  # Do not process further stdin lines this run; the re-push recomputes fresh.
-  break
 done
-
-if [ "$NCOMMITS" -gt 0 ]; then
-  echo
-  echo "pre-push: re-signed ${NCOMMITS} unpushed unsigned commit(s) on ${MSG}."
-  echo "pre-push: one fingerprint scan cached for the batch (gpg default-cache-ttl is now 300s)."
-  echo "pre-push: THIS push was ABORTED so the rewritten refs take effect."
-  echo "pre-push: re-run the push command to push the now-signed commits."
-  echo "pre-push: (for the one-command flow, use \`dotfiles push\` — dotfiles-push handles it.)"
-  exit 1
-fi
 exit 0

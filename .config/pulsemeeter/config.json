@@ -615,8 +615,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					61,
-					61
+					35,
+					35
 				],
 				"mute": false,
 				"flags": 0,

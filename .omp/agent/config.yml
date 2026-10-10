@@ -51,3 +51,5 @@ compaction:
     - shake
 dev:
   autoqa: true
+security:
+  enabled: false

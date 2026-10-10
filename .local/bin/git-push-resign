@@ -14,8 +14,9 @@
 # pushes that bypass the shell function (other shells, IDEs, scripts): it
 # still resigns-then-aborts in that case, telling the user to re-run.
 #
-# Only touches UNPUSHED commits on the branch actually being pushed via the
-# resolvable @{upstream} — already-published history is never rewritten.
+# Only touches UNPUSHED commits authored by the configured user.email on the
+# branch being pushed (via the resolvable @{upstream}). Published history and
+# other authors' commits are never rewritten; see git-resign-own.
 set -u
 
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
@@ -28,22 +29,8 @@ fi
 base="$(git rev-parse --abbrev-ref --symbolic-full-name "@{upstream}" 2>/dev/null)"
 base="${base#refs/remotes/}"
 
-to_sign=""
 if [ -n "$base" ]; then
-  unpushed="$(git rev-list "$base"..HEAD 2>/dev/null || true)"
-  for sha in $unpushed; do
-    git cat-file -p "$sha" 2>/dev/null | grep -q '^gpgsig' || to_sign="$to_sign $sha"
-  done
-fi
-
-if [ -n "$to_sign" ]; then
-  n=$(echo "$to_sign" | wc -w | tr -d ' ')
-  echo "git-push: re-signing $n unpushed unsigned commit(s) (one fingerprint scan)..."
-  if ! git rebase --rebase-merges --exec 'git commit --amend --no-edit -S' "$base" 2>&1; then
-    echo "git-push: ERROR — resign rebase failed. Resolve conflicts, then run 'git push' again." >&2
-    exit 1
-  fi
-  echo "git-push: resigned. pushing now."
+  git-resign-own "$base" || exit 1
 fi
 
 # Sole resign authority for this push: mark the global pre-push hook as
