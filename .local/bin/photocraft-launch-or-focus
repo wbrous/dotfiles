@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Launch PhotoCraft in agent "driving mode", or focus the window that is already running.
+#
+# Driving mode = the GUI listens on 127.0.0.1:$PORT (authenticated by $TOKEN_FILE) so the
+# PhotoCraft-Bridge MCP entry (`photocraft-cli mcp --bridge`) can see and drive the live app.
+# File access for the agent is limited to $READ_ROOT / $WRITE_ROOT (the same roots the headless
+# MCP entry uses).
+#
+# Contract:
+#   precondition : none. Optional args are files to open (as with `photocraft %F`).
+#   postcondition: at most ONE PhotoCraft GUI exists afterwards. A second GUI would fight over
+#                  the control port and the preferences/recovery files, so we never start one
+#                  while a PhotoCraft window or process is up.
+#   exit status  : 0 launched or focused; 1 a GUI is running WITHOUT the control port (driving
+#                  mode cannot be enabled on a live process; close it and relaunch).
+set -euo pipefail
+
+PORT=47600
+TOKEN_FILE="$HOME/.config/photocraft/control-token"
+READ_ROOT="$HOME/Pictures/photocraft-agent/in"
+WRITE_ROOT="$HOME/Pictures/photocraft-agent/out"
+WINDOW_CLASS='^ai\.storyteller\.photocraft$'
+
+# True when something already accepts connections on the control port (the driving-mode GUI).
+control_port_listening() {
+  ss -ltn "sport = :$PORT" 2>/dev/null | grep -q LISTEN
+}
+
+# True when a PhotoCraft GUI process exists (exact binary name; excludes photocraft-cli).
+gui_process_running() {
+  pgrep -x photocraft >/dev/null
+}
+
+# True when a running GUI was started with `--control $PORT`. The GUI takes about a second to
+# bind the port, so "port closed" alone cannot tell a plain GUI from a driving-mode GUI that is
+# still starting; its own command line can.
+gui_started_in_driving_mode() {
+  local pid
+  for pid in $(pgrep -x photocraft); do
+    tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q -- "--control $PORT " && return 0
+  done
+  return 1
+}
+
+# Waits up to ~10s for the control port to open. Returns 0 as soon as it is listening.
+wait_for_control_port() {
+  local _
+  for _ in $(seq 1 40); do
+    control_port_listening && return 0
+    sleep 0.25
+  done
+  return 1
+}
+
+mkdir -p "$READ_ROOT" "$WRITE_ROOT" "$(dirname "$TOKEN_FILE")"
+
+if gui_process_running; then
+  # Focus the existing window. omarchy-launch-or-focus matches class OR title with word
+  # boundaries, so anchor the full class to avoid grabbing e.g. a browser tab titled
+  # "...photocraft...". Its launch branch is unreachable here (the process exists) except for
+  # a window that has not mapped yet, so it is given a no-op command instead of a second GUI.
+  omarchy-launch-or-focus "$WINDOW_CLASS" "true"
+  if gui_started_in_driving_mode; then
+    # Started with --control: it is either listening or about to be. Do not warn on a race.
+    wait_for_control_port || { echo "PhotoCraft was started with --control $PORT but the port never opened." >&2; exit 1; }
+  elif ! control_port_listening; then
+    msg="PhotoCraft is running WITHOUT driving mode (nothing on 127.0.0.1:$PORT). Close it and relaunch to enable the MCP bridge."
+    echo "$msg" >&2
+    command -v notify-send >/dev/null && notify-send -u normal "PhotoCraft" "$msg"
+    exit 1
+  fi
+  # Driving-mode GUI is up. A second `photocraft <file>` would start a second GUI, so file
+  # args cannot be forwarded from here; say so rather than silently dropping them. (Open the
+  # file with the MCP `doc_open` tool, which reads from $READ_ROOT.)
+  if (($# > 0)); then
+    echo "PhotoCraft is already running; not starting a second instance. Ignoring file args: $*" >&2
+  fi
+  exit 0
+fi
+
+# Nothing running: start the GUI in driving mode.
+# WINIT_X11_SCALE_FACTOR=1.5: PhotoCraft runs through XWayland and otherwise doubles up with
+# the 1.25 monitor scale, making the UI far too large (same fix as the .desktop override).
+exec setsid env WINIT_X11_SCALE_FACTOR=1.5 uwsm-app -- photocraft \
+  --control "$PORT" \
+  --control-token-file "$TOKEN_FILE" \
+  --automation-read-root "$READ_ROOT" \
+  --automation-write-root "$WRITE_ROOT" \
+  "$@"

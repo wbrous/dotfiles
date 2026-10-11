@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=PhotoCraft
+GenericName=Image Editor
+Comment=Edit photos and layered PSD documents
+# Runs PhotoCraft in agent driving mode (control port + automation roots for the MCP bridge) or focuses the existing window, so a second GUI is never started. The WINIT_X11_SCALE_FACTOR=1.5 fix (XWayland doubling up with the 1.25 monitor scale) now lives in the script.
+Exec=photocraft-launch-or-focus %F
+TryExec=photocraft-launch-or-focus
+Icon=ai.storyteller.photocraft
+Terminal=false
+# The native runner does not complete desktop startup-notification handshakes.
+StartupNotify=false
+StartupWMClass=photocraft
+Categories=Graphics;2DGraphics;RasterGraphics;Photography;
+Keywords=photo;image;editor;psd;layers;retouch;paint;
+MimeType=application/x-photocraft;image/x-paintnet;image/vnd.adobe.photoshop;image/x-psd;image/x-psb;image/png;image/jpeg;image/tiff;image/webp;image/gif;image/bmp;image/x-tga;image/x-icon;image/vnd.microsoft.icon;image/x-portable-anymap;image/x-portable-bitmap;image/x-portable-graymap;image/x-portable-pixmap;image/x-exr;image/vnd.radiance;image/avif;image/qoi;
