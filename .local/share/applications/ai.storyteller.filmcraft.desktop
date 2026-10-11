@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=FilmCraft
+GenericName=Video Editor
+Comment=Edit video, color and sound
+# Runs FilmCraft in agent driving mode (--control 47601, for the MCP bridge) or focuses the existing window, so a second GUI is never started.
+Exec=filmcraft-launch-or-focus %F
+TryExec=filmcraft-launch-or-focus
+Icon=ai.storyteller.filmcraft
+Terminal=false
+StartupNotify=true
+StartupWMClass=ai.storyteller.filmcraft
+Categories=AudioVideo;Video;AudioVideoEditing;
+Keywords=video;editor;film;timeline;color;grading;nle;

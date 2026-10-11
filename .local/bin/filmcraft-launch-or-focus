@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Launch FilmCraft in agent "driving mode", or focus the window that is already running.
+#
+# Driving mode = the GUI listens on 127.0.0.1:$PORT so the FilmCraft-Bridge MCP entry
+# (`filmcraft-cli mcp --bridge`) can see and drive the live app.
+#
+# Differences from photocraft-launch-or-focus, all verified against filmcraft 0.6.0:
+#   * NO auth token and NO file sandbox: `--control` takes only a port, and `filmcraft-cli mcp`
+#     rejects --automation-read-root. The control port is unauthenticated, so any local process
+#     can drive the app; loopback binding is the only protection. (Hence the exit-1 paths below
+#     matter: never leave it listening needlessly.)
+#   * Native Wayland: it scales correctly on its own, so no WINIT_X11_SCALE_FACTOR workaround.
+#   * A second `filmcraft --control $PORT` does NOT exit when the port is taken: it logs
+#     "failed to bind" and keeps running as a duplicate window with no control channel. So the
+#     single-instance guard here is load-bearing, not cosmetic.
+#
+# Contract:
+#   precondition : none. Optional args are files/projects to open (as with `filmcraft %F`).
+#   postcondition: at most ONE FilmCraft GUI exists afterwards.
+#   exit status  : 0 launched or focused; 1 a GUI is running WITHOUT the control port (driving
+#                  mode cannot be enabled on a live process; close it and relaunch).
+set -euo pipefail
+
+PORT=47601
+WINDOW_CLASS='^ai\.storyteller\.filmcraft$'
+
+# True when something already accepts connections on the control port (the driving-mode GUI).
+control_port_listening() {
+  ss -ltn "sport = :$PORT" 2>/dev/null | grep -q LISTEN
+}
+
+# True when a FilmCraft GUI process exists (exact binary name; excludes filmcraft-cli).
+gui_process_running() {
+  pgrep -x filmcraft >/dev/null
+}
+
+# True when a running GUI was started with `--control $PORT`. The GUI takes about 2s to bind the
+# port, so "port closed" alone cannot tell a plain GUI from a driving-mode GUI that is still
+# starting; its own command line can.
+gui_started_in_driving_mode() {
+  local pid
+  for pid in $(pgrep -x filmcraft); do
+    tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q -- "--control $PORT" && return 0
+  done
+  return 1
+}
+
+# Waits up to ~15s for the control port to open. Returns 0 as soon as it is listening.
+wait_for_control_port() {
+  local _
+  for _ in $(seq 1 60); do
+    control_port_listening && return 0
+    sleep 0.25
+  done
+  return 1
+}
+
+if gui_process_running; then
+  # Focus the existing window. omarchy-launch-or-focus matches class OR title with word
+  # boundaries, so anchor the full class: a browser tab titled "...storytold/filmcraft..." would
+  # otherwise be focused instead. Its launch branch is a no-op here; we never start a second GUI.
+  omarchy-launch-or-focus "$WINDOW_CLASS" "true"
+  if gui_started_in_driving_mode; then
+    # Started with --control: it is either listening or about to be. Do not warn on a race.
+    wait_for_control_port || { echo "FilmCraft was started with --control $PORT but the port never opened." >&2; exit 1; }
+  elif ! control_port_listening; then
+    msg="FilmCraft is running WITHOUT driving mode (nothing on 127.0.0.1:$PORT). Close it and relaunch to enable the MCP bridge."
+    echo "$msg" >&2
+    command -v notify-send >/dev/null && notify-send -u normal "FilmCraft" "$msg"
+    exit 1
+  fi
+  # Driving-mode GUI is up. A second `filmcraft <file>` would start a second GUI, so file args
+  # cannot be forwarded from here; say so rather than silently dropping them. (Open media with
+  # the MCP `media_import` tool, or a project with `file.open` via `command_run`.)
+  if (($# > 0)); then
+    echo "FilmCraft is already running; not starting a second instance. Ignoring file args: $*" >&2
+  fi
+  exit 0
+fi
+
+# Nothing running: start the GUI in driving mode.
+exec setsid uwsm-app -- filmcraft --control "$PORT" "$@"
