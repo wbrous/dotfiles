@@ -7,6 +7,8 @@ description: "Use for ANY PhotoCraft image-editor task: photocraft-cli (run/conv
 
 PhotoCraft is a Photoshop-like editor. ONE registry of ~851 engine commands (e.g. `layer.new.layer`, `filter.blur.gaussianBlur`) is driven identically by the GUI, `photocraft-cli`, a JSON control channel, and the MCP server. Learn the command ids once; every surface uses them.
 
+Sibling app: FilmCraft (video editor) uses the same architecture but DIFFERS (no auth token, no file sandbox, native Wayland, port 47601, ticks for time). See the `filmcraft` skill; do not assume PhotoCraft's token/roots/scale settings carry over.
+
 ## Pick the surface
 
 | Goal | Use |

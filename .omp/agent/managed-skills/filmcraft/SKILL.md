@@ -64,11 +64,11 @@ Options go anywhere. Output is JSON. Exit: 0 ok, 1 command failed, 2 usage error
 - Project selection: `--demo` (built-in demo, 642 frames at 23.976 fps), `--project p.fcproj`; persist with `--save` (back to `--project`) or `--save-as p.fcproj`. WITHOUT a save flag, headless edits are discarded.
 - `--bridge 127.0.0.1:47601`: send commands to the running GUI instead of a headless engine.
 - Examples (all verified): `filmcraft-cli --demo --save-as d.fcproj exec timeline.razor seconds=3.5` -> `{"cuts":3}`; `filmcraft-cli --demo render --seconds 1 --out f.png --scale 0.25` -> 480x270 PNG; `filmcraft-cli --demo export out.mp4 --start 0 --end 1 --scale 0.25` (0.3s).
-- A saved project beside which headless sessions create a `FilmCraft Previews/` folder; delete it with the test dir.
+- Every saved `.fcproj` (CLI `--save-as`, or MCP `file.saveAs`) gets a sibling `FilmCraft Previews/` folder (verified). Delete it along with any test project; render/export do not create it.
 
 ## MCP config (`~/.omp/agent/mcp.json`)
 
-Both FilmCraft entries register the SAME tool names, so enable exactly one. FilmCraft and PhotoCraft tool names do NOT collide (different prefixes `mcp__filmcraft_*` vs `mcp__photocraft_*`), so both apps can be enabled at once. Editing args/`enabled` needs an omp restart/MCP reload.
+Both FilmCraft entries register the SAME tool names, so enable exactly one. FilmCraft and PhotoCraft are separate servers, and the client prefixes tools with the server name (`mcp__photocraft_*` was observed; `mcp__filmcraft_*` is [INFERENCE] from the name until the client reloads), so both apps can be enabled at once. Editing args/`enabled` needs an omp restart/MCP reload.
 - `FilmCraft-Bridge` (**enabled**, `timeout:120000`): `filmcraft-cli mcp --bridge 127.0.0.1:47601`. No token. Fails with a connect error until the GUI is up.
 - `FilmCraft` (headless, **disabled**): `filmcraft-cli mcp --demo`. Also accepts `--project p.fcproj` and `--data-dir DIR`; any other option exits 2.
 
