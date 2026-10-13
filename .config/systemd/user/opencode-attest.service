@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenCode free-tier attestation proxy for omp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/node /home/wils/.omp/agent/opencode-attest.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
