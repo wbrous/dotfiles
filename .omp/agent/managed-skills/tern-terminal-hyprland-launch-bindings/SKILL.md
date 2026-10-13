@@ -1,19 +1,19 @@
 ---
 name: tern-terminal-hyprland-launch-bindings
-description: "Binding or testing Tern (so.stencil.tern) launch/cwd shortcuts on Omarchy Hyprland; double windows, cwd ignored, Close window dialog."
+description: "Binding or testing Tern (so.stencil.tern) launch/cwd shortcuts and omp-in-cwd on Omarchy Hyprland; double windows, wrong cwd, Close window dialog."
 ---
 
-## Tern launch bindings on Omarchy/Hyprland (lua config)
+## Setup that works (Omarchy, Lua Hyprland config)
+- Bindings in `~/.config/hypr/apps/tern.lua`, required from `~/.config/hypr/hyprland.lua`; apply with `hyprctl reload`. Omarchy defaults on SUPER+SHIFT(+ALT/CTRL)+A (ChatGPT, Grok, `omarchy-agent --pick`) must be `hl.unbind`-ed first.
+- Helpers in `~/.local/bin`: `active-terminal-cwd` (focused Tern block cwd via `tern inspect --json | jq '[.sessions[].tabs[]|select(.shown)|.blocks[]|select(.focused)|.cwd][0]'` when active class is `so.stencil.tern`, else `omarchy-cmd-terminal-cwd`, which can't see inside Tern), `tern-launch-cwd` (`exec setsid uwsm-app -- tern "$(active-terminal-cwd)"`), `omp-launch-cwd` (`xdg-terminal-exec --app-id=org.omarchy.agent --dir="$cwd" -e omp --auto-approve`; kitty gets `--working-directory`).
+- Plain shortcut: `uwsm-app -- tern "$HOME"` (user wanted ~). `o.bind` commands run via a shell, so `$HOME` expands.
 
-Observed facts (verified in-session):
-- Window class is `so.stencil.tern`. `~/.local/bin/tern` is a symlink to `~/.local/opt/tern/tern`. The first launch also spawns `tern daemon` that keeps sessions alive.
-- Omarchy defaults already own SUPER+SHIFT+A (ChatGPT), +ALT+A (Grok), +CTRL+A (`omarchy-agent --pick`, launches `omarchy default agent`). `hl.unbind(...)` them in `~/.config/hypr/apps/tern.lua`, then require it from `hyprland.lua`.
-- `omarchy-cmd-terminal-cwd` cannot see into Tern (only kitty sockets / shell child of window pid). For Tern, read cwd with `tern inspect --json | jq '[.sessions[].tabs[]|select(.shown)|.blocks[]|select(.focused)|.cwd][0]'` when the active class is `so.stencil.tern`.
-- `tern DIR` only honors DIR for a FRESH daemon session. With a running daemon it opens a window on the existing session and ignores DIR. Use `cd DIR && exec setsid uwsm-app -- tern -e "$SHELL"` instead (verified: new window opens at DIR).
-- `hyprctl dispatch` takes Lua here: `hyprctl dispatch 'hl.dsp.exec_cmd("...")'`, `hl.dsp.window.close({ window = "address:0x..." })`, `hl.dsp.focus({...})`.
+## Tern behaviours / gotchas
+- Window class `so.stencil.tern`. NEVER use `tern -e bash` (user explicitly forbade it).
+- `tern DIR` only sets cwd for a fresh session; once the daemon holds a session it attaches to it and may ignore DIR. `tern new tab --cwd DIR` + `tern focus <block id>` work via CLI but target the first window.
+- Closing a Tern window with a running shell shows a "Close window?" confirm dialog, which Hyprland lists as an extra client (same pid). Test harnesses that "close all" leave windows and inflate counts: closing is not quitting. Do NOT automate this with wtype Return loops (user objected).
+- Tern restores previous window records from `~/.local/state/tern/daemon.state`; many accumulated records make a plain launch reopen many windows. Deleting that file/daemon resets state (kills daemon-held programs) — avoid unless asked.
+- Hyprland Lua dispatch: `hyprctl dispatch 'hl.dsp.exec_cmd("...")'`, close via `hl.dsp.window.close({ window = "address:0x.." })`.
 
-Testing pitfalls:
-- Closing a Tern window with a running shell shows a "Close window?" dialog (itself a separate Hyprland client of the same class). Programmatic close only dismisses/adds dialogs, so window counts are inflated and "closed" windows linger. Confirm with Return (wtype) or have the user close them; do not loop-close automatically.
-- Killing the daemon / deleting `~/.local/state/tern/daemon.state` resets sessions and kills running programs; avoid without asking.
-
-Unresolved: plain `tern` sometimes opens 2 windows from one process (log shows "window created id=2" with a second "session started"); cause not found. State records accumulate in daemon.state ("window":[w,h]) and may be the restore trigger; unverified.
+## Testing without side effects
+Verify bindings with `hyprctl binds -j | jq` (modmask 65=S+Shift? 73=+Alt, 69=+Ctrl, 77=+Ctrl+Alt), check launcher commands with `xdg-terminal-exec --print-cmd ...`, launch once, inspect `/proc/<child>/cwd`, kill only that window's pid. Prefer read-only inspection when the user is hand-testing.
