@@ -1,30 +1,32 @@
 ---
 name: omarchy-strata-file-manager-setup
-description: "Replace Nautilus with Strata (lgse/strata) on Omarchy/Hyprland: pacman install, folder handler, keybinds, FileManager1 D-Bus override, portal file chooser, Follow Omarchy theming; not general file-manager issues."
+description: "Replace Nautilus with Strata (lgse/strata) on Omarchy/Hyprland: pacman install, folder handler, FileManager1, portal chooser, keybinds, Follow Omarchy theming, and installer-marker gotchas."
 ---
 
-# Replace Nautilus with Strata on Omarchy 4 / Hyprland
+# Strata as the Omarchy file manager (verified on Omarchy 4 / Hyprland)
 
-Strata (github.com/lgse/strata, MIT, Rust+GTK4) already ships everything; nothing to build. Has no plugin API; theme "hooks" = Follow Omarchy, TOML themes in `~/.config/strata/themes/`, `@strata_*` GTK CSS tokens.
+## Install
+- `sudo pacman -S --needed strata` (repo `omarchy`; pulls gtksourceview5). Run sudo through bash with `pty: true` (fingerprint prompt). Seen: 0.21.0-2.
+- `xdg-mime default io.github.lgse.Strata.desktop inode/directory`; check with `xdg-mime query default inode/directory` and `xdg-open ~/Documents`.
 
-## Steps (all verified working)
-1. Back up `~/.config/hypr/bindings.lua` and `~/.config/mimeapps.list`.
-2. `sudo pacman -S --needed strata` (repo `omarchy`; pulls gtksourceview5). sudo needs a PTY here (bash `pty: true`; fingerprint prompt). Pacman may be newer than GitHub README tag.
-3. `xdg-mime default io.github.lgse.Strata.desktop inode/directory`.
-4. Append to `~/.config/hypr/bindings.lua`:
-   ```lua
-   hl.unbind("SUPER + SHIFT + F")
-   hl.unbind("SUPER + ALT + SHIFT + F")
-   o.bind("SUPER + SHIFT + F", "File manager", { launch = "strata" })
-   o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)", "uwsm-app -- strata \"$(omarchy-cmd-terminal-cwd)\"")
-   ```
-   then `hyprctl reload; hyprctl configerrors` (empty). Check for chord collisions (e.g. FilmCraft on SUPER+SHIFT+ALT+F in ~/.config/hypr/apps/filmcraft.lua).
-5. "Open file location": copy `/usr/share/strata/io.github.lgse.Strata.FileManager1.service` to `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service`. **The filename MUST equal the bus name** - dbus-broker silently ignores `io.github.lgse.Strata.FileManager1.service` (journal: "not named after the D-Bus name"). Quit Nautilus first; verify with `busctl --user call org.freedesktop.FileManager1 /org/freedesktop/FileManager1 org.freedesktop.FileManager1 ShowItems ass 1 "file://$HOME/Downloads" ""`.
-6. `strata --install-portal` (close file dialogs first). It writes `~/.config/xdg-desktop-portal/hyprland-portals.conf` (not portals.conf) with `FileChooser=strata;hyprland;gtk;`. Undo: `strata --uninstall-portal`.
-7. Follow Omarchy is on by default (`mode = "omarchy"` in `~/.config/strata/settings.toml`).
+## Do NOT hand-install FileManager1 or keybinds: use Strata's own installer
+Strata Settings (Ctrl+,) -> General -> Desktop integration -> "System file manager" writes everything itself. Opening that panel auto-applied it in testing; "Restore default" undoes it.
+- It writes `~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service` (this name is what it looks for; dbus-broker logs a harmless "not named after the D-Bus name" warning, activation still works).
+- It appends a block to `~/.config/hypr/bindings.lua` wrapped in `-- strata-installer: file-manager start/end` markers (hl.unbind + o.bind using `/usr/bin/strata`).
+- Hand-made copies (a service file named `org.freedesktop.FileManager1.service`, or a bind block without the markers) make the panel show "Another per-user FileManager1 provider is already installed" and mark Reveal/Keyboard shortcuts as unchecked. Delete them first, then let Strata write its own.
+- `strata --install-portal` (Open/Save dialogs) writes `~/.config/xdg-desktop-portal/hyprland-portals.conf` (not portals.conf) with `FileChooser=strata;hyprland;gtk;`, plus `strata.portal` and a `org.freedesktop.impl.portal.desktop.strata.service`. Close open file dialogs first (it restarts the portal frontend). Undo: `strata --uninstall-portal`.
 
-## Verification tricks
-- Test portal chooser: `GTK_USE_PORTAL=1 zenity --file-selection` -> window class `io.github.lgse.Strata.FileChooser`. Raw gdbus OpenFile to the frontend shows no window (empty parent/options).
-- Test live theming: `omarchy-theme-set <theme>` with a theme whose colors.toml differs (aether and pink share a palette here; use ame-quattro/spectrum-os); sample pixels via `grim -g` + `magick`; restore theme after.
-- Bash tool: `( cmd & )` subshell backgrounding silently drops processes; use plain `cmd &` and a poll loop on `hyprctl clients -j`.
-- `strata --help` doesn't list --install-portal; it exists (`strings /usr/bin/strata`).
+## Theming
+Settings `mode = "omarchy"` = Follow Omarchy, on by default. Strata recolors live on `omarchy-theme-set`, no restart. Beware: `pink` and `aether` have identical colors.toml; use `ame-quattro` / `spectrum-os` to see a change. No plugin API exists; real hooks are custom TOML themes in `~/.config/strata/themes/` and `@strata_*` GTK CSS tokens.
+
+## Verification recipes (tool quirks)
+- Background launch with `( cmd & )` or `setsid` silently drops GUI processes in this bash tool; use a plain `cmd &` job and probe in the same call, or run in foreground with `timeout`.
+- Window probe: `hyprctl clients -j | jq` on class `io.github.lgse.Strata` (main) / `io.github.lgse.Strata.FileChooser` (portal). Screenshot: `grim -g "x,y WxH"`.
+- Portal test with a real client: `GTK_USE_PORTAL=1 zenity --file-selection`. Raw `gdbus ... FileChooser.OpenFile` with empty options shows no window.
+- FileManager1 test: quit nautilus and strata, then `busctl --user call org.freedesktop.FileManager1 /org/freedesktop/FileManager1 org.freedesktop.FileManager1 ShowItems ass 1 "file://$HOME/Downloads" ""`; a Strata window must appear and `pgrep nautilus` stay empty.
+- Open Settings via `wtype -M ctrl -k comma -m ctrl` after focusing the window with `hyprctl dispatch 'hl.dsp.focus({window="address:0x..."})'`.
+
+## Related
+- Back up `~/.config/hypr/bindings.lua` and `~/.config/mimeapps.list` before editing.
+- Personal per-app bind files live in `~/.config/hypr/apps/*.lua` and are `require`d from `hyprland.lua`; remove both when dropping a bind. Chords can collide (SUPER+SHIFT+ALT+F was shared with a launcher bind).
+- Not enabled by default: `strata --install-udiskie-unlock` (edits udiskie config).
