@@ -1,33 +1,39 @@
 ---
 name: opencode-free-tier-attestation
-description: Diagnose and fix OpenCode free-tier FreeTierError rejections for omp
+description: "When OpenCode rejects omp with FreeTierError, diagnose attestation failure."
 ---
 
 # OpenCode free-tier attestation for omp
 
 OpenCode's Zen/Go free tier gates on request **shape** (looks-like-official-client), not the key. `403 FreeTierError: "can only be used from within OpenCode"` means shape mismatch, not bad credentials. Upstream tightens the checks periodically, so re-verify before assuming breakage.
 
-## Known fingerprint (verified 2026-10-13)
+## Known fingerprint (re-verified 2026-10-13 by one-signal-at-a-time replay of a real omp body)
 
-All required simultaneously; anything else (body size, system prompt, key value — `Bearer public` works) is ignored:
+Required simultaneously:
 
-- `User-Agent: opencode/<semver>`, version >= 1.18.0 (lower → 426 `UpgradeRequired`)
-- `x-opencode-session: ses_<12 lowercase hex><14 base62>` (timestamp value not validated, format is; omp's native `<uuid>` fails)
-- `x-opencode-request: msg_<same format>`
-- `x-opencode-client: desktop`
+- `User-Agent` whose LEADING token is `opencode/<semver>`, version >= 1.18.0 (lower → 426 `UpgradeRequired`). Trailing tokens are accepted: `opencode/1.19.0 omp/18.10.3` → 200.
+- `x-opencode-session: ses_<12 lowercase hex><14 base62>`. Format validated, value not. UPPERCASE hex → 403. omp's native `<uuid>` → 403.
 - body `stream: true` (omp already sends this)
-- body `tools` includes lowercase `bash`, `glob`, `grep`, `read` (omp already sends these)
-- muse-spark models use the `/responses` endpoint, not `/chat/completions`
+- body `tools` includes lowercase `bash`, `glob`, `grep`, `read` (omp already sends these; per upstream comments the threshold has shifted — recheck)
+- muse-spark models use `/responses`, not `/chat/completions`
+
+NOT required (verified): `x-opencode-client`, `x-opencode-request`, key value (`Bearer public` works), body size, system prompt.
+
+Fixing only UA or only session still 403s — both are needed.
 
 ## This machine's fix
 
-- `~/.omp/agent/opencode-attest.js` + systemd user service `opencode-attest` (port 127.0.0.1:8791): rewrites UA/session, maps each incoming session to one stable `ses_` id, streams bodies untouched. `models.yml` config headers **cannot** override transport-native headers (omp's UUID session wins), hence the proxy.
+- `~/.omp/agent/opencode-attest.js` + systemd user service `opencode-attest` (127.0.0.1:8791): rewrites UA/session, maps each incoming session to one stable `ses_` id, streams bodies untouched. `models.yml` config headers **cannot** override omp's transport-stamped `x-opencode-session` (`setHeader` in `packages/ai/src/providers/inference-headers.ts`), hence the proxy.
 - `~/.omp/agent/models.yml`: zen/go `baseUrl` → proxy paths, backup headers.
-- `~/.omp/agent/opencode-id.py`: mints `ses_`/`msg_` ids for config `!`-commands.
+- `~/.omp/agent/opencode-id.py`: mints `ses_`/`msg_` ids.
+
+## Upstream tracking
+
+Repo is `can1357/oh-my-pi`. Issues: #12306, #12418 (older), **#15609** (consolidated, filed 2026-10-13, with proposed fix: `opencode/<floor> omp/<ver>` UA + deterministic `ses_` id from conversation id). Unmerged PR #12325 (bundles OAuth device flow). Check these before re-filing.
 
 ## Re-diagnosing when upstream changes the gate
 
-1. Reproduce with curl against `https://opencode.ai/zen/v1/chat/completions` (or `/responses` for muse-spark), varying one signal at a time: UA → session → request → stream → tools. Error classes differ: 403 FreeTierError = shape, 426 = UA version too low, 429 FreeUsageLimitError = per-IP quota (change egress, not shape).
-2. To see what omp actually sends: temp `models.yml` provider with `baseUrl: http://127.0.0.1:<port>/v1` + a stdlib logging server; `omp -p --model <probe>/...`. Note omp sends `stream`, `tools`, `tool_choice` at the END of large bodies — log parsed summaries, not truncated prefixes.
-3. Reference: community notes on the fingerprint (e.g. `0xgetz/opencode-free-9router` README, `shiyanYX/opencode2api` UPSTREAM-COMPAT.md) document newly discovered conditions.
-4. Verify end-to-end with `omp -p --model opencode-zen/big-pickle "reply with just the word ok"` and the go muse-spark model.
+1. Capture a REAL omp body: temp edit `models.yml` zen `baseUrl` to a local logging server (python http.server on 127.0.0.1:8899; log headers + parsed summary of stream/tools — omp puts `stream`/`tools` at the END of big bodies), run `omp -p --model opencode-zen/big-pickle "ok"`, then RESTORE models.yml. Save raw body.
+2. Replay with `curl --data-binary @body` against `https://opencode.ai/zen/v1/chat/completions` (or `/responses` for muse-spark), varying ONE header at a time. Vary the real body too — tool-less/non-stream probes give false 403s. Beware typos in hand-made ids (a bad id looks like a gate change).
+3. Error classes: 403 FreeTierError = shape, 426 = UA version low, 429 FreeUsageLimitError = per-IP quota, 403 `[user_blocked]` = account ban. Reported lane drift: `/inference/openai/v1/responses`; `zen/go/v1/responses` returned 400 "Model is unavailable" for muse-spark-free.
+4. Verify end-to-end: `omp -p --model opencode-zen/big-pickle "reply with just the word ok"` and the go muse-spark model.
