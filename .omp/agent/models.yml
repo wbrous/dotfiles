@@ -1,0 +1,24 @@
+# OpenCode Zen/Go free-tier attestation.
+#
+# The free-tier gateway only serves requests shaped like the official OpenCode
+# client: `User-Agent: opencode/<semver> (>=1.18.0)`, `stream: true`, the
+# lowercase fingerprint tools (bash/glob/grep/read), and well-formed
+# `x-opencode-session` / `x-opencode-request` ids. omp already sends
+# stream:true and the fingerprint tools. The local proxy
+# (opencode-attest.js, systemd user service `opencode-attest`) rewrites the
+# transport-native `User-Agent: omp/...` and `x-opencode-session: <uuid>`
+# headers, which plain config headers cannot override. The headers below are
+# a backup for any path that does not already carry them.
+providers:
+  opencode-zen:
+    baseUrl: http://127.0.0.1:8791/zen/v1
+    headers:
+      User-Agent: opencode/1.19.0
+      x-opencode-client: desktop
+      x-opencode-request: "!python3 ~/.omp/agent/opencode-id.py msg"
+  opencode-go:
+    baseUrl: http://127.0.0.1:8791/go/v1
+    headers:
+      User-Agent: opencode/1.19.0
+      x-opencode-client: desktop
+      x-opencode-request: "!python3 ~/.omp/agent/opencode-id.py msg"
