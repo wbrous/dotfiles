@@ -1,6 +1,6 @@
 ---
 name: arch-caelestia-install-in-libvirt-patched-qemu-vm
-description: "Install Arch Linux + Caelestia (Hyprland shell) + greetd/Airlock login manager into a libvirt VM on this host, driving the live ISO from the host: virsh send-key typing, virtio NIC/disk/GPU invisible under patched QEMU, SSH bootstrap, paru/jack2 gotchas, caelestia install --noconfirm, resolution and timezone tweaks."
+description: "Install Arch Linux + Caelestia (Hyprland shell) + greetd/Airlock login manager into a libvirt VM on this host, driving the live ISO from the host: virsh send-key typing, virtio NIC/disk/GPU invisible under patched QEMU, SSH bootstrap, paru/jack2 gotchas, caelestia install --noconfirm, plus post-install tweaks (resolution, timezone, 24h clock)."
 ---
 
 # Arch + Caelestia into a libvirt VM (patched QEMU host)
@@ -8,11 +8,11 @@ description: "Install Arch Linux + Caelestia (Hyprland shell) + greetd/Airlock l
 ## Driving the guest console
 - `wtype` into the focused virt-manager window produces GARBLED text (fcitx5 is the main keyboard). Do not use it.
 - Use `virsh -c qemu:///system send-key DOMAIN KEY_...` per character (US layout; shift = KEY_LEFTSHIFT + key). Write a small python helper that validates every char has a keycode BEFORE sending anything.
-- This Hyprland (0.56) uses Lua dispatch: `hyprctl dispatch 'hl.dsp.focus({ window = "address:0x..." })'`, `hl.dsp.workspace.toggle_special("scratchpad")`. Old `focuswindow address:...` syntax errors. `hl.dsp.cursor.move({x=,y=})` works; there is NO click/send_key dispatcher and no ydotool, so drive guest UIs with keyboard only.
-- The agent runs in a scratchpad terminal that overlays the VM window; toggle the special workspace off before `grim` screenshots of the guest. A stray guest launcher (from an accidental key) is closed with KEY_ESC.
+- This Hyprland (0.56) uses Lua dispatch: `hyprctl dispatch 'hl.dsp.focus({ window = "address:0x..." })'`. Old `focuswindow address:...` syntax errors. `hl.dsp.cursor.move({x=,y=})` works; there is NO click/send_key dispatcher and no ydotool, so drive guest UIs with keyboard only. Hide the agent scratchpad with `hl.dsp.workspace.toggle_special("scratchpad")`.
 - Once in the live ISO: `echo root:live | chpasswd; systemctl start sshd`, then SSH with `sshpass` (installed on host). Guest IP: `virsh net-dhcp-leases default` (IP CHANGES per boot; newest lease wins) or `domifaddr DOMAIN --source arp`.
-- User says "online, just ping 1.1.1.1": do not test DNS/archlinux.org; avoid long-running foreground SSH commands (they background and waste turns). Use `nohup sh -c '...; echo EXIT=$? >> log' &` then one wait loop on `grep ^EXIT=`. Do not set huge wait timeouts; the user notices.
+- User says "online, just ping 1.1.1.1": do not test DNS/archlinux.org; avoid long-running foreground SSH commands (they background and waste turns). Use `nohup sh -c '...; echo EXIT=$? >> log' &` then one wait loop on `grep ^EXIT=`.
 - User may keep using their computer: notify with `notify-send` when UI is needed, then yield.
+- Take screenshots with `grim` as its OWN bash call (or after the SSH call returns); a grim chained after a failing/odd step may not run.
 
 ## Patched QEMU gotcha (qemu-anti-detection): ALL virtio PCI devices are unusable
 - Virtio PCI IDs are spoofed (8086:1041 net, 1042 blk, 1050 gpu), so the guest has NO virtio_net / virtio_blk / virtio-gpu binding.
@@ -40,11 +40,15 @@ description: "Install Arch Linux + Caelestia (Hyprland shell) + greetd/Airlock l
 - Remove any manual `exec Hyprland` from ~/.bash_profile (greetd owns tty1).
 - Airlock opens on an idle clock; ANY key (Enter) shows the login form. It auto-shows only the one user with the password field focused: just type the password + Enter. Do NOT Tab/Enter blindly: that submits an empty password (AUTH_ERR) and restarts the greeter.
 - GOTCHA: the hyprland package ships `hyprland-uwsm.desktop` (TryExec=uwsm), Airlock lists it anyway and defaults to it; uwsm is not installed so login authenticates then the session dies instantly. Fix: set `userSessions.<user>` to `hyprland` in `/var/cache/astra-airlock/greeter.json` and restart greetd (or install uwsm).
-- Verified: greeter renders, login with password succeeds, Caelestia shell (`qs -c caelestia`) + dashboard appear.
+- Greeter 12/24h is `use12Hour` in `/var/cache/astra-airlock/greeter.json` (already false by default).
 
-## Post-install tweaks
-- Zoom out = higher guest resolution. Put `hl.monitor({ output = "", mode = "1920x1200@60", position = "auto", scale = 1 })` in `~/.config/caelestia/hypr-user.lua` (survives dots updates; never edit ~/.config/hypr), then `hyprctl reload` (needs `XDG_RUNTIME_DIR=/run/user/1000` and `HYPRLAND_INSTANCE_SIGNATURE=$(ls $XDG_RUNTIME_DIR/hypr|head -1)` over SSH). List modes: `cat /sys/class/drm/card*-*/modes`. Match the virt-manager window aspect (~1.54) to avoid bars; 1920x1200 (16:10) fits.
-- Timezone: guest defaults to UTC. `timedatectl set-timezone <host tz>` (host: `timedatectl show -p Timezone --value`, e.g. America/Chicago) and `systemctl enable --now systemd-timesyncd`.
+## Post-install tweaks (all via Caelestia's user-override files, survive updates)
+- Zoom out = higher guest resolution. `~/.config/caelestia/hypr-user.lua`: `hl.monitor({ output = "", mode = "1920x1200@60", position = "auto", scale = 1 })` (16:10 fits the ~2280x1477 virt-manager window; modes come from bochs-drm, check `/sys/class/drm/card*-*/modes`). Apply with `hyprctl reload` (set XDG_RUNTIME_DIR=/run/user/1000 and HYPRLAND_INSTANCE_SIGNATURE=$(ls $XDG_RUNTIME_DIR/hypr|head -1) when running over SSH).
+- Timezone: guest defaults to UTC. `timedatectl set-timezone <host tz>` (host: `timedatectl show -p Timezone --value`) and `systemctl enable --now systemd-timesyncd`.
+- 24-hour shell clock: `~/.config/caelestia/shell.json` = `{"services": {"clockFormat": "TwentyFourHour"}}` (values: Auto | TwelveHour | TwentyFourHour). Auto follows the en_US locale = 12h. Applies live, no restart.
+
+## Verified end state
+Greeter renders, password login succeeds, Caelestia shell (`qs -c caelestia`) + dashboard appear at 1920x1200, Chicago time, 24h clock.
 
 ## Credentials / state left on the VM
 user `wils` and `root` password `caelestia` (user should change); temp sudoers drop-in removed; 20 GiB disk = single ext4 root.
