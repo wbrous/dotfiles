@@ -1,56 +1,59 @@
 ---
 name: arch-libvirt-virtnetworkd-socket-missing
-description: "Use when virt-manager (or another libvirt UI) fails with \"Failed to connect socket to '/var/run/libvirt/virtnetworkd-sock': No such file or directory\" on Arch Linux, or when starting/listing a VM works via virtqemud but network management is unreachable — the modular virtnetworkd daemon/socket is inactive or disabled. Companion to arch-libvirt-virtqemud-not-running; same pattern applies to other modular virt*d daemons."
+description: "Use when virt-manager, an installer (\"Validating install media failed\"), or another libvirt client fails with \"Failed to connect socket to '/var/run/libvirt/virt{network,storage,nodedev,secret}d-sock': No such file or directory\" on Arch Linux — a modular virt*d daemon/socket is inactive or disabled. Companion to arch-libvirt-virtqemud-not-running."
 ---
 
-# Arch: virtnetworkd socket missing (modular libvirt daemon)
+# Arch: modular libvirt daemon socket missing (virtnetworkd, virtstoraged, virtnodedevd, virtsecretd)
 
 ## Symptom
 
-virt-manager shows an error dialog when starting/connecting:
+A libvirt client shows e.g.:
 
 ```
 Error starting domain: Failed to connect socket to '/var/run/libvirt/virtnetworkd-sock': No such file or directory
 ```
 
-The socket `/var/run/libvirt/virtnetworkd-sock` (a symlink to `/run/libvirt/virtnetworkd-sock`) does not exist. `virtqemud` (QEMU daemon) may be running fine — the guest-execution daemon is up, but the **network** daemon is down, so network management is unreachable.
+or a VM installer app: `Validating install media '<iso>' failed: Failed to connect socket to '/var/run/libvirt/virtstoraged-sock': ...`
+
+The socket (symlink to `/run/libvirt/<daemon>-sock`) does not exist. `virtqemud` may be running fine; only another driver daemon is down.
 
 ## Root cause
 
-Modern Arch libvirt (12.x+) uses **modular daemons** (`virtqemud`, `virtnetworkd`, `virtnodedevd`, `virtsecretd`, `virtstoraged`, `virtproxyd`). The `virtnetworkd.service`/`virtnetworkd.socket` units ship **disabled by default** (`preset: disabled`). If they were never enabled (or got stopped), the socket file never appears and any client that needs network management fails with this error.
+Modern Arch libvirt (12.x+) uses **modular daemons** (`virtqemud`, `virtnetworkd`, `virtnodedevd`, `virtsecretd`, `virtstoraged`, `virtproxyd`). Their units ship **disabled by default**. Never-enabled sockets never appear, so any client needing that driver fails. Map: network→virtnetworkd, storage pools/ISO validation→virtstoraged, host devices→virtnodedevd, secrets→virtsecretd.
 
 ## Diagnosis
 
 ```bash
-systemctl list-units --all | grep -iE 'virt.*d\.(service|socket)'   # spot which modular daemons are inactive
-systemctl is-active virtnetworkd        # inactive
-systemctl is-enabled virtnetworkd       # disabled
-ls -la /run/libvirt/virtnetworkd-sock   # No such file or directory
+systemctl list-units --all | grep -iE 'virt.*d.*\.(service|socket)'   # find inactive daemons
+systemctl is-enabled virtstoraged.socket
+ls -la /run/libvirt/ | grep sock
 ```
 
-Note: `virsh net-list --all` may return an empty list when queried through the wrong socket even after the fix; use `virsh -c qemu:///system net-list --all` to query through the proper driver connection.
+Legacy `libvirtd.*` being inactive is NORMAL; don't start it.
 
-## Fix
+## Fix (enable sockets; services start on demand)
+
+Enable all missing drivers at once (do all three sockets per daemon: plain, -ro, -admin):
 
 ```bash
-sudo systemctl enable --now virtnetworkd.socket
-sudo systemctl enable --now virtnetworkd.service
+sudo systemctl enable --now virtstoraged.socket virtstoraged-ro.socket virtstoraged-admin.socket \
+  virtnodedevd.socket virtnodedevd-ro.socket virtnodedevd-admin.socket \
+  virtsecretd.socket virtsecretd-ro.socket virtsecretd-admin.socket
+# network daemon, if it is the one missing:
+sudo systemctl enable --now virtnetworkd.socket virtnetworkd-ro.socket virtnetworkd-admin.socket
 ```
 
-(`enable --now` also wires the `-ro` and `-admin` sockets; do both commands — the socket alone can sit idle.)
-
-Verify:
+Verify (socket activation spawns the daemon):
 
 ```bash
-systemctl is-active virtnetworkd          # active
-ls -la /run/libvirt/virtnetworkd-sock     # socket exists
-virsh -c qemu:///system net-list --all    # default network visible
-virsh net-info default                    # Active: yes, Bridge: virbr0
+virsh -c qemu:///system pool-list --all   # storage: default pool listed
+virsh -c qemu:///system net-list --all    # network
 ```
+
+No reboot needed; reopen the client app if it cached the failed connection.
 
 ## Notes
 
-- `virbr0` may show `DOWN` when no VM is running — normal; it gets carrier when a guest NIC attaches.
-- The same diagnostic pattern applies to any other missing `/var/run/libvirt/virt*d-sock` (e.g. `virtnodedevd-sock`, `virtsecretd-sock`): find the inactive daemon, `systemctl enable --now <daemon>.socket` + `.service`.
-- Do not start the legacy monolithic `libvirtd.service` as a workaround on modular setups — enable the specific modular daemon instead.
-- On this user's machine (Omarchy/Arch, wils), sudo is fingerprint-gated: the first sudo in a PTY session triggers a polkit fingerprint prompt ("Place your right index finger on the fingerprint reader") — run commands through an interactive PTY and let the user scan.
+- `virbr0` may show DOWN with no VM running — normal.
+- Use `virsh -c qemu:///system ...`; bare `virsh` may query the wrong socket and show empty lists.
+- Sudo on this machine (Omarchy, wils) is fingerprint-gated: run via a PTY and let the user scan ("Place your right index finger...").
