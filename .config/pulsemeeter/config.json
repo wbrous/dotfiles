@@ -105,8 +105,8 @@
 				"device_type": "sink",
 				"device_class": "virtual",
 				"volume": [
-					100,
-					100
+					50,
+					50
 				],
 				"mute": false,
 				"flags": 0,
@@ -590,7 +590,7 @@
 					65,
 					65
 				],
-				"mute": true,
+				"mute": false,
 				"flags": 0,
 				"external": false,
 				"primary": null,
@@ -615,8 +615,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					35,
-					35
+					100,
+					100
 				],
 				"mute": false,
 				"flags": 0,

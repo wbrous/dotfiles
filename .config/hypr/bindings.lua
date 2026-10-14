@@ -53,3 +53,10 @@ o.bind("SUPER + CTRL + comma", "Clear notifications", "omarchy-shell -q notifica
 
 -- Right-click-a-toast equivalent: snooze new notifications and clear all.
 o.bind("SUPER + SHIFT + comma", "Snooze & clear notifications", "omarchy-shell -q notifications snoozeAndClear")
+-- strata-installer: file-manager start
+hl.unbind("SUPER + SHIFT + F")
+hl.unbind("SUPER + ALT + SHIFT + F")
+o.bind("SUPER + SHIFT + F", "File manager", { launch = "/usr/bin/strata" })
+o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)",
+  "uwsm-app -- /usr/bin/strata \"$(omarchy-cmd-terminal-cwd)\"")
+-- strata-installer: file-manager end
