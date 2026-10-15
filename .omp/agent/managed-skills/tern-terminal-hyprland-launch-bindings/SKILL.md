@@ -1,19 +1,29 @@
 ---
 name: tern-terminal-hyprland-launch-bindings
-description: "Tern (so.stencil.tern) as default terminal on Omarchy Hyprland: xdg-terminals.list, SUPER+RETURN, omp-in-cwd, terminal tag; double windows, wrong cwd, Close window dialog."
+description: "Tern (so.stencil.tern) as default terminal on Omarchy Hyprland: xdg-terminals.list, SUPER+RETURN, SUPER+SHIFT+A agent keys (omp, omp cwd, Claude/ChatGPT webapps), terminal tag; double windows, wrong cwd, Close window dialog."
 ---
 
 ## Tern is the default terminal (current setup)
 - `~/.config/xdg-terminals.list` lists `so.stencil.tern.desktop` first, `kitty.desktop` as fallback. `omarchy default terminal` only accepts alacritty/foot/ghostty/kitty, so edit the file directly. Verify: `xdg-terminal-exec --print-id`.
 - **xdg-terminal-exec silently drops `--dir` and `--app-id` for Tern** (its .desktop has only `X-TerminalArgExec=-e`). So Omarchy's `omarchy-launch-terminal` (SUPER+RETURN default) loses cwd, and `omarchy-cmd-terminal-cwd` can't see inside Tern anyway. Never route cwd-sensitive launches through xdg-terminal-exec.
-- `~/.config/hypr/apps/tern.lua` (required last in `hyprland.lua`) holds everything: `o.window("so\\.stencil\\.tern", { tag = "+terminal" })` (Omarchy's terminal tag is a fixed class list; the tag drives clipboard Ctrl+Shift+C/V and transparency, `transparent-window` follows automatically), `o.rebind("SUPER + RETURN", "Terminal", "tern-launch-cwd")`, and `o.bind("SUPER + SHIFT + CTRL + ALT + A", "omp (cwd)", "omp-launch-cwd")`.
-- No Tern-specific binds on SUPER+SHIFT+A any more: those were redundant with SUPER+RETURN and had required unbinding Omarchy's ChatGPT / Grok / Agent (`omarchy-agent --pick`) defaults, which are restored. Do not re-add the unbinds.
+- `~/.config/hypr/apps/tern.lua` (required last in `hyprland.lua`) holds everything:
+  - `o.window("so\\.stencil\\.tern", { tag = "+terminal" })`: Omarchy's terminal tag is a fixed class list; the tag drives clipboard Ctrl+Shift+C/V and transparency (`transparent-window` follows automatically).
+  - `o.rebind("SUPER + RETURN", "Terminal", "tern-launch-cwd")`.
+  - Agent keys, all on A. Omarchy defaults on SUPER+SHIFT(+ALT/CTRL)+A (ChatGPT, Grok, `omarchy-agent --pick`) are `hl.unbind`-ed first:
+    - SUPER+SHIFT+A: `omp-launch` (omp from ~/Work)
+    - SUPER+SHIFT+CTRL+A: `omp-launch-cwd` (omp in active terminal's cwd)
+    - SUPER+SHIFT+ALT+A: Claude webapp (`{ webapp = "https://claude.ai" }`)
+    - SUPER+SHIFT+CTRL+ALT+A: ChatGPT webapp (`https://chatgpt.com`)
 - Apply: `hyprctl reload && hyprctl configerrors`. From a plain shell `HYPRLAND_INSTANCE_SIGNATURE` is unset: `ls /run/user/$UID/hypr/`.
 
 ## Helpers in `~/.local/bin`
 - `active-terminal-cwd`: focused Tern block cwd via `tern inspect --json | jq '[.sessions[].tabs[]|select(.shown)|.blocks[]|select(.focused)|.cwd][0]'` when active class is `so.stencil.tern`, else `omarchy-cmd-terminal-cwd`.
 - `tern-launch-cwd`: `exec setsid uwsm-app -- tern "$(active-terminal-cwd)"`.
-- `omp-launch-cwd`: `cd "$(active-terminal-cwd)"` then `exec setsid uwsm-app -- tern -e omp --auto-approve` (`tern -e` runs in the caller's cwd, hence the cd). No Omarchy window rule matches `org.omarchy.agent`, so the dropped app-id costs nothing.
+- `omp-launch`: `cd ~/Work` (else `$HOME`; mirrors omarchy-agent, since agents won't remember trust for $HOME) then `exec setsid uwsm-app -- tern -e omp --auto-approve`.
+- `omp-launch-cwd`: same but `cd "$(active-terminal-cwd)"` first. `tern -e` runs in the caller's cwd, hence the cd. No Omarchy window rule matches `org.omarchy.agent`, so the dropped app-id costs nothing.
+
+## Webapps
+- Default browser is Zen (no `--app=`), so `omarchy-launch-webapp` falls back to `chromium.desktop`. Chromium cold start takes ~5s before the window maps (class `chrome-claude.ai__-Default`); a check right after dispatch sees nothing. Wait before concluding it failed.
 
 ## Tern behaviours / gotchas
 - Window class `so.stencil.tern`. NEVER use `tern -e bash` (user explicitly forbade it).
