@@ -401,7 +401,7 @@
 				"mute": false,
 				"flags": 0,
 				"external": false,
-				"primary": false,
+				"primary": true,
 				"channels": 1,
 				"channel_list": [
 					"MONO"
@@ -615,8 +615,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					100,
-					100
+					64,
+					64
 				],
 				"mute": false,
 				"flags": 0,

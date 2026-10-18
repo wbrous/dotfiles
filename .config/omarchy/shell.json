@@ -1,12 +1,8 @@
 {
   "bar": {
     "background": "none",
-    "centerAnchor": "omarchy.clock",
     "layout": {
       "center": [
-        {
-          "id": "wils.indicators"
-        },
         {
           "birthYear": 0,
           "format": "ddd d MMM HH:mm",
@@ -14,7 +10,14 @@
           "id": "omarchy.clock",
           "lifeExpectancy": 100,
           "verticalFormat": "HH\n—\nmm"
-        },
+        }
+      ],
+      "centerBegin": [
+        {
+          "id": "wils.indicators"
+        }
+      ],
+      "centerEnd": [
         {
           "id": "omarchy.elsewhen",
           "zones": "Dallas|America/Chicago, London|Europe/London, Singapore|Asia/Singapore, Tokyo|Asia/Tokyo, Honolulu|Pacific/Honolulu"
@@ -37,10 +40,10 @@
       ],
       "right": [
         {
-          "id": "omarchy.network"
+          "id": "omarchy.tray"
         },
         {
-          "id": "omarchy.tray"
+          "id": "omarchy.network"
         },
         {
           "fingerprintUnlock": true,

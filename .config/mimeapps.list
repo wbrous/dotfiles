@@ -62,6 +62,7 @@ x-scheme-handler/jetbrains=jetbrainsd.desktop
 text/markdown=omawrite.desktop
 x-scheme-handler/figma=figma-linux.desktop
 text/csv=omawrite.desktop
+x-scheme-handler/tern=so.stencil.tern.url.desktop
 
 [Added Associations]
 x-scheme-handler/http=zen.desktop;

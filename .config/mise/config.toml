@@ -1,9 +1,6 @@
 [tools]
 bun = "1.3.14"
-claude = "latest"
-codex = "latest"
-gh = "latest"
-opencode = "latest"
+"npm:@moonshot-ai/kimi-code" = { version = "latest", minimum_release_age = "0s", lazy = true, lazy_bins = ["kimi"], auto_update = "4h" }
 
 [settings.upgrade]
 auto_prune = false

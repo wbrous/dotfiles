@@ -15,6 +15,9 @@
 // Bodies stream through untouched (upstream requires stream:true, which omp
 // already sends). Each incoming session value is mapped to one stable
 // ses_-format id, mirroring the official client's stable per-session id.
+//
+// Also: strips content-encoding (fetch already decoded the body) and collapses
+// the doubled "/v1/v1/" that omp's System One (judge) transport produces.
 
 import crypto from "node:crypto";
 import http from "node:http";
@@ -51,7 +54,9 @@ function attestSession(incoming) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, "http://x");
+    // omp's System One transport appends "/v1/systemone" to a baseUrl that already
+    // ends in "/v1", producing ".../v1/v1/systemone". Collapse the duplicate prefix.
+    const url = new URL(req.url.replace(/\/v1\/v1\//, "/v1/"), "http://x");
     let upstream;
     if (url.pathname.startsWith("/zen/v1/")) {
       upstream = "https://opencode.ai/zen/v1/" + url.pathname.slice("/zen/v1/".length) + url.search;
@@ -72,9 +77,11 @@ const server = http.createServer(async (req, res) => {
     headers["x-opencode-session"] = attestSession(headers["x-opencode-session"]);
     const hasBody = req.method !== "GET" && req.method !== "HEAD";
     const upstreamRes = await fetch(upstream, { method: req.method, headers, body: hasBody ? req : undefined, duplex: "half" });
+    // fetch() has already decoded the body (br/gzip/deflate), so the original
+    // content-encoding header must not be forwarded or the client decodes twice.
     const outHeaders = {};
     upstreamRes.headers.forEach((v, k) => {
-      if (!["content-length", "connection", "transfer-encoding"].includes(k)) outHeaders[k] = v;
+      if (!["content-length", "content-encoding", "connection", "transfer-encoding"].includes(k)) outHeaders[k] = v;
     });
     res.writeHead(upstreamRes.status, outHeaders);
     if (upstreamRes.body) for await (const chunk of upstreamRes.body) res.write(chunk);
