@@ -1,0 +1,133 @@
+#!/bin/bash
+# Install the root-owned half of the fingerprint-gated GPG signing setup.
+#
+# WHAT THIS DOES
+#   Gpg-agent -> ~/.local/bin/pinentry-fprintd -> pkexec -> polkit -> PAM
+#   fingerprint -> /usr/local/bin/gpg-fingerprint-read -> /etc/gpg-fingerprint/
+#   passphrase. The user-side source files are tracked in the dotfiles repo
+#   under ~/.local/share/gpg-fingerprint/; this script deploys them to their
+#   live paths. Everything that must be root-owned and outside $HOME is also
+#   created here.
+#
+# PRECONDITIONS
+#   - dotfiles checked out, so ~/.local/share/gpg-fingerprint/{pinentry-fprintd,
+#     gpg-agent.conf,common.conf,sshcontrol} exist.
+#   - sudo available (will prompt).
+#   - Your GPG secret key is imported and protected by a passphrase.
+#   - A polkit agent is running (Omarchy: hyprpolkitagent) and fingerprint is
+#     enrolled (`omarchy setup security fingerprint`).
+#
+# POSTCONDITIONS
+#   - /usr/local/bin/gpg-fingerprint-read   root:root 755
+#   - /usr/share/polkit-1/actions/com.gir0fa.gpg-fingerprint-read.policy root:root 644
+#   - /etc/gpg-fingerprint/                 root:root 700
+#   - /etc/gpg-fingerprint/passphrase       root:root 600 (created only if
+#     missing, from a prompt that is never echoed or logged)
+#   - ~/.local/bin/pinentry-fprintd, ~/.gnupg/{gpg-agent.conf,common.conf,
+#     sshcontrol} are copies of the tracked source, root-owned so a user-level
+#     process cannot swap them. They are NOT tracked at the live paths.
+#   - gpg-agent restarted so it picks up the pinentry.
+#
+# The passphrase is NEVER read from, or written to, stdout/argv/this script.
+# Re-running is safe: files are overwritten identically, passphrase is kept.
+set -euo pipefail
+
+READER=/usr/local/bin/gpg-fingerprint-read
+POLICY=/usr/share/polkit-1/actions/com.gir0fa.gpg-fingerprint-read.policy
+PASS_DIR=/etc/gpg-fingerprint
+PASS_FILE=$PASS_DIR/passphrase
+PINENTRY="$HOME/.local/bin/pinentry-fprintd"
+AGENT_CONF="$HOME/.gnupg/gpg-agent.conf"
+# Tracked source of the user-side files. The LIVE copies (~/.gnupg/*,
+# ~/.local/bin/pinentry-fprintd) are deliberately NOT tracked: the dotfiles
+# bare repo uses work-tree=$HOME, and git-resign-own rebases it at push time.
+# A rebase checks out older trees, which deletes any tracked live file absent
+# from them — including gpg's own config — and signing then fails mid-rebase.
+SRC_DIR="$HOME/.local/share/gpg-fingerprint"
+
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" -ne 0 ] || die "run as your normal user, not root (sudo is invoked per step)"
+command -v sudo   >/dev/null || die "sudo not found"
+command -v pkexec >/dev/null || die "pkexec (polkit) not found"
+for f in pinentry-fprintd gpg-agent.conf common.conf sshcontrol; do
+  [ -f "$SRC_DIR/$f" ] || die "$SRC_DIR/$f missing — check out dotfiles first"
+done
+grep -qx "pinentry-program $PINENTRY" "$SRC_DIR/gpg-agent.conf" \
+  || die "$SRC_DIR/gpg-agent.conf does not point pinentry-program at $PINENTRY"
+
+echo "==> Installing root-only reader: $READER"
+sudo install -o root -g root -m 755 /dev/stdin "$READER" <<'EOF'
+#!/bin/sh
+# Root-only reader for the fingerprint-gated GPG signing passphrase.
+# Invoked via `pkexec` (polkit) so the hyprpolkitagent GUI dialog gates it with
+# PAM fingerprint auth before root prints the passphrase to stdout.
+#
+# The passphrase itself lives in /etc/gpg-fingerprint/passphrase (mode 600).
+# This script MUST remain root-owned and non-user-writable, or a user could
+# swap it to exfiltrate/replace the passphrase.
+set -e
+
+umask 077
+cat /etc/gpg-fingerprint/passphrase
+EOF
+
+echo "==> Installing polkit policy: $POLICY"
+sudo install -o root -g root -m 644 /dev/stdin "$POLICY" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>Gir0fa</vendor>
+  <vendor_url>https://gir0fa.com</vendor_url>
+
+  <action id="com.gir0fa.gpg-fingerprint-read">
+    <description>Unlock GPG signing key</description>
+    <message>Authentication is required to release the GPG signing passphrase</message>
+    <icon_name>gcr-key-pair</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/gpg-fingerprint-read</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>
+EOF
+
+echo "==> Ensuring $PASS_DIR (root:root 700)"
+sudo install -d -o root -g root -m 700 "$PASS_DIR"
+
+if sudo test -s "$PASS_FILE"; then
+  echo "==> $PASS_FILE already exists — keeping it (not touched)"
+else
+  echo "==> $PASS_FILE missing. Enter your GPG key passphrase (input hidden)."
+  [ -t 0 ] || die "need an interactive terminal to prompt for the passphrase"
+  IFS= read -r -s -p "Passphrase: " p1; echo
+  IFS= read -r -s -p "Again:      " p2; echo
+  [ -n "$p1" ]      || die "empty passphrase"
+  [ "$p1" = "$p2" ] || die "passphrases do not match"
+  # printf is a shell builtin: the secret never appears in any process's argv.
+  printf '%s' "$p1" | sudo install -o root -g root -m 600 /dev/stdin "$PASS_FILE"
+  unset p1 p2
+fi
+
+echo "==> Deploying user-side files from $SRC_DIR (root-owned so a user process can't swap them)"
+# Copied, not symlinked: the live paths must NOT be tracked by the dotfiles
+# repo, or a rebase (git-resign-own) deletes them mid-signing. See the
+# comment above SRC_DIR.
+sudo install -d -m 700 -o "$USER" -g "$(id -gn)" "$HOME/.gnupg"
+sudo install -o root -g root -m 755 "$SRC_DIR/pinentry-fprintd" "$PINENTRY"
+sudo install -o root -g root -m 644 "$SRC_DIR/gpg-agent.conf"   "$AGENT_CONF"
+sudo install -o root -g root -m 644 "$SRC_DIR/common.conf"      "$HOME/.gnupg/common.conf"
+sudo install -o root -g root -m 644 "$SRC_DIR/sshcontrol"       "$HOME/.gnupg/sshcontrol"
+
+echo "==> Restarting gpg-agent"
+gpgconf --kill gpg-agent
+
+echo
+echo "Installed. Verify (should show a fingerprint dialog, then print a LENGTH only):"
+echo "    pkexec $READER | wc -c"
+echo "End-to-end: make a commit in any repo and confirm 'git log --show-signature -1' says Good signature."

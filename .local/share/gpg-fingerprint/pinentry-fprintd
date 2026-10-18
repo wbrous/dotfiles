@@ -1,0 +1,40 @@
+#!/bin/bash
+# Custom pinentry: GPG unlock gated by polkit + fingerprint.
+#
+# On GETPIN, release the passphrase via `pkexec` of a root-only reader. The
+# hyprpolkitagent GUI dialog prompts for fingerprint (pam_fprintd) with
+# password fallback, and root then prints the passphrase. No secret lives in a
+# user-readable keyring anymore; the passphrase is in /etc/gpg-fingerprint/
+# (mode 600, root-only).
+#
+# If polkit auth fails (user declines), report cancellation so gpg aborts.
+set -u
+
+printf 'OK Pleased to meet you\n'
+
+while IFS= read -r line; do
+  cmd="${line%% *}"
+  case "$cmd" in
+    GETPIN)
+      pin="$(pkexec /usr/local/bin/gpg-fingerprint-read 2>/dev/null)" || {
+        printf 'ERR 83886179 cancelled\n'
+        continue
+      }
+      if [ -n "$pin" ]; then
+        esc=$(printf '%s' "$pin" | sed 's/%/%25/g; s/\r/%0D/g')
+        printf 'D %s\n' "$esc"
+        printf 'OK\n'
+      else
+        printf 'ERR 83886179 No passphrase available\n'
+      fi
+      unset pin
+      ;;
+    BYE)
+      printf 'OK closing connection\n'
+      exit 0
+      ;;
+    *)
+      printf 'OK\n'
+      ;;
+  esac
+done
