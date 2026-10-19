@@ -22,8 +22,7 @@ sudo udevadm control --reload-rules
 # The fork binary, helpers and polkit policy the installer put in place.
 sudo rm -f /usr/local/bin/passless /usr/share/polkit-1/actions/com.gir0fa.omarchy-passkey-unlock.policy
 sudo rm -f /usr/lib/omarchy-passkey/omarchy-passkey-unlock-root /usr/lib/omarchy-passkey/omarchy-passkey-enroll-root
+sudo rm -f /usr/local/bin/omarchy-passkey-start /usr/local/bin/omarchy-passkey-sync /usr/local/bin/omarchy-passkey-unlock /usr/local/bin/omarchy-passkey-watch
 # The deployed user units.
-sudo -u "$user" rm -f /home/"$user"/.config/systemd/user/omarchy-passkey.service /home/"$user"/.config/systemd/user/omarchy-passkey-watch.service /home/"$user"/.config/systemd/user/omarchy-passkey-vault.service
-
 echo ""
 echo "Passkeys have been removed. Your passkeys remain in your Bitwarden vault."

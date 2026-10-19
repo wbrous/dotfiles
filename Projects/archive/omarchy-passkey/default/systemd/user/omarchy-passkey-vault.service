@@ -20,9 +20,11 @@ LimitCORE=0
 # No PrivateTmp: the unix socket must be created on the real /run path so the
 # authenticator, sync bridge and unlock helper (outside this namespace) reach it.
 NoNewPrivileges=true
-# `bw` writes its data and config under ~/.config/Bitwarden CLI.
-ProtectSystem=strict
-ReadWritePaths=%h/.config %t/omarchy-passkey
+# `bw` writes its data and config under ~/.config/Bitwarden CLI. No
+# ProtectSystem: strict mounts a private /run, so the socket would exist
+# only inside the service's namespace (visible via /proc/PID/root,
+# invisible on the host path). NoNewPrivileges + the 0700 runtime dir are
+# the sandbox.
 
 [Install]
 WantedBy=graphical-session.target

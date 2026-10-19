@@ -24,7 +24,9 @@ NoNewPrivileges=true
 # (its own default); our store lives in %t/omarchy-passkey. Both are tmpfs.
 # RuntimeDirectory creates %t/passless before the namespace is built, which
 # ReadWritePaths alone cannot do (it requires the path to exist).
+# Preserve: without this, every restart wipes the pulled passkeys.
 RuntimeDirectory=passless omarchy-passkey
+RuntimeDirectoryPreserve=yes
 ReadWritePaths=%t/omarchy-passkey %t/passless
 
 [Install]
