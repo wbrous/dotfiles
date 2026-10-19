@@ -55,3 +55,5 @@ symbolPreset: nerd
 theme:
   dark: omarchy
   light: omarchy
+claudeResets:
+  autoRedeem: 'no'
