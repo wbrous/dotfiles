@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# omarchy:summary=Install passkeys for browsers and native apps, stored in your Bitwarden vault.
+# omarchy:requires-sudo=true
+
+# What this sets up:
+#   - passless, a virtual FIDO2 security key (via /dev/uhid) that browsers and
+#     native apps such as Discord already know how to talk to,
+#   - bw serve, which holds the unlocked Bitwarden vault in memory,
+#   - a watcher that backs up each new passkey to Bitwarden as it is created,
+#   - a root-only helper that unlocks the vault after a fingerprint scan, so the
+#     master password is never typed, never visible to your user, and never in a
+#     process you can read.
+#
+# Passkeys are decrypted only in RAM ($XDG_RUNTIME_DIR). Bitwarden is the durable copy.
+#
+# THIS NEEDS THE wbrous/passless FORK. Upstream passless (and the AUR `passless` and
+# `passless-bin` packages) cannot create backup-eligible passkeys, so every passkey
+# would register as BE=0 while Bitwarden reports BE=1, and strict sites reject it.
+# This script installs the fork's release binary; it does not use the upstream packages.
+
+set -euo pipefail
+
+FORK_REPO="wbrous/passless"
+FORK_VERSION="0.20.2-omarchy.1"
+# SHA-256 of the release tarball. Pinned here so a tampered release cannot be installed.
+FORK_SHA256="10c996b8526a7f9958bce670abd3fe288e634d6eaa6d567c8c641a206a673150"
+FORK_ASSET="passless-${FORK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+
+SRC=${OMARCHY_PASSKEY_SRC:-$(dirname "$(readlink -f "$0")")/..}
+LIBEXEC=/usr/lib/omarchy-passkey
+user=${SUDO_USER:-$USER}
+
+if [[ $(uname -m) != x86_64 ]]; then
+  echo "Passkeys: the fork publishes an x86_64 binary only; build it from source on this machine." >&2
+  exit 1
+fi
+
+# The upstream packages own /usr/bin/passless. Installing alongside them would make
+# pacman and this script fight over one path, so refuse and say what to do.
+if pacman -Q passless passless-bin &>/dev/null; then
+  echo "Passkeys: the upstream passless package is installed, and it has the backup-eligibility bug." >&2
+  echo "Remove it first:  sudo pacman -Rns passless passless-bin" >&2
+  exit 1
+fi
+
+echo "Installing passkey packages..."
+omarchy-pkg-add bitwarden-cli inotify-tools libnotify polkit
+
+echo "Installing passless from ${FORK_REPO} ${FORK_VERSION}..."
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+curl -fsSL -o "$work/$FORK_ASSET" "https://github.com/${FORK_REPO}/releases/download/v${FORK_VERSION}/${FORK_ASSET}"
+if [[ $FORK_SHA256 == PIN_AFTER_RELEASE ]]; then
+  echo "Passkeys: this installer has no pinned checksum for the fork release; refusing to install an unverified binary." >&2
+  exit 1
+fi
+echo "${FORK_SHA256}  $work/$FORK_ASSET" | sha256sum -c - >/dev/null || {
+  echo "Passkeys: checksum mismatch for $FORK_ASSET; refusing to install it." >&2
+  exit 1
+}
+tar -xzf "$work/$FORK_ASSET" -C "$work" passless
+sudo install -o root -g root -m 755 "$work/passless" /usr/local/bin/passless
+
+echo "Installing the unlock helpers (root-owned, not writable by you)..."
+# These run as root. If a user could edit them, they could make root hand over the
+# master password, so they are root-owned 755 in a root-owned directory.
+sudo install -d -o root -g root -m 755 "$LIBEXEC"
+sudo install -o root -g root -m 755 "$SRC/libexec/omarchy-passkey-unlock-root" "$LIBEXEC/omarchy-passkey-unlock-root"
+sudo install -o root -g root -m 755 "$SRC/libexec/omarchy-passkey-enroll-root" "$LIBEXEC/omarchy-passkey-enroll-root"
+sudo install -o root -g root -m 644 "$SRC/polkit/com.gir0fa.omarchy-passkey-unlock.policy" /usr/share/polkit-1/actions/
+
+echo "Granting access to /dev/uhid..."
+echo uhid | sudo tee /etc/modules-load.d/fido.conf >/dev/null
+sudo modprobe uhid
+getent group fido >/dev/null || sudo groupadd --system fido
+sudo usermod -aG fido "$user"
+echo 'KERNEL=="uhid", GROUP="fido", MODE="0660"' | sudo tee /etc/udev/rules.d/90-passless.rules >/dev/null
+sudo udevadm control --reload-rules
+sudo udevadm trigger --action=change /sys/devices/virtual/misc/uhid
+
+echo "Enabling passkey services..."
+systemctl --user daemon-reload
+systemctl --user enable omarchy-passkey-vault.service omarchy-passkey-watch.service omarchy-passkey.service
+
+echo ""
+echo "Passkeys are installed. Three steps remain:"
+echo "1. Log out and back in once: your user needs the new 'fido' group before the services can start."
+echo "2. Sign in to Bitwarden once:  bw login"
+echo "3. Enrol your master password so a fingerprint can unlock it (asks for it twice, hidden):"
+echo "     sudo $LIBEXEC/omarchy-passkey-enroll-root"

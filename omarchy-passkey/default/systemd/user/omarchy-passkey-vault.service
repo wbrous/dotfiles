@@ -1,0 +1,27 @@
+[Unit]
+Description=Bitwarden vault server for passkeys (private Unix socket)
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# The socket lives in a 700 directory so only this user (and root) can connect, and
+# the root unlock helper can verify who made it. A TCP port could be bound or used by
+# any local process. Origin protection stays on: never add --disable-origin-protection.
+RuntimeDirectory=omarchy-passkey
+RuntimeDirectoryMode=0700
+# A crashed run leaves the socket file behind, and bind() would then fail with EADDRINUSE.
+ExecStartPre=/usr/bin/rm -f %t/omarchy-passkey/bw.sock
+ExecStart=/usr/bin/bw serve --hostname unix://%t/omarchy-passkey/bw.sock --port 8087
+# Restart must not wipe the credential store the authenticator keeps in the same directory.
+RuntimeDirectoryPreserve=yes
+Restart=on-failure
+RestartSec=3
+LimitCORE=0
+PrivateTmp=true
+NoNewPrivileges=true
+# `bw` writes its data and config under ~/.config/Bitwarden CLI.
+ProtectSystem=strict
+ReadWritePaths=%h/.config %t/omarchy-passkey
+
+[Install]
+WantedBy=graphical-session.target

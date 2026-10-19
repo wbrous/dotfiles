@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# omarchy:summary=Remove the passkey authenticator. Passkeys stay in your Bitwarden vault.
+# omarchy:requires-sudo=true
+
+# Leaves the fido group, the uhid module entry and bitwarden-cli alone: other
+# tools (a hardware key workflow, your own bw use) may rely on them, and removing
+# a group from a running session is not something to do silently.
+
+set -uo pipefail
+
+systemctl --user disable --now omarchy-passkey.service omarchy-passkey-watch.service omarchy-passkey-vault.service 2>/dev/null || true
+
+# Decrypted working copy in RAM; the vault still has every passkey.
+rm -rf "${XDG_RUNTIME_DIR:?}/omarchy-passkey"
+
+sudo rm -f /etc/udev/rules.d/90-passless.rules
+sudo udevadm control --reload-rules
+# The fork binary, helpers and polkit policy the installer put in place.
+sudo rm -f /usr/local/bin/passless /usr/share/polkit-1/actions/com.gir0fa.omarchy-passkey-unlock.policy
+sudo rm -f /usr/lib/omarchy-passkey/omarchy-passkey-unlock-root /usr/lib/omarchy-passkey/omarchy-passkey-enroll-root
+
+echo ""
+echo "Passkeys have been removed. Your passkeys remain in your Bitwarden vault."

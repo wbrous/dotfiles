@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>Gir0fa</vendor>
+  <vendor_url>https://gir0fa.com</vendor_url>
+
+  <action id="com.gir0fa.omarchy-passkey-unlock">
+    <description>Unlock the Bitwarden vault for passkeys</description>
+    <message>Authentication is required to unlock your Bitwarden vault for passkeys</message>
+    <icon_name>dialog-password</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <!-- auth_admin, NOT auth_admin_keep: every unlock needs its own fingerprint scan. -->
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/omarchy-passkey/omarchy-passkey-unlock-root</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

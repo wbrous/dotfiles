@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# omarchy:summary=Push new or changed passkeys to Bitwarden as the authenticator writes them
+# omarchy:group=passkey
+# omarchy:hidden=true
+
+# A credential is finished when passless renames its temp file onto `<id>.bin`,
+# which inotify reports as one MOVED_TO. Temp files (.tmp.*) are not watched for.
+# A burst (several writes at once) is collapsed into one push.
+#
+# When the vault is locked the push cannot happen, so the user is asked to unlock
+# and the push is retried. Until then the passkey exists only in RAM, so the user
+# is told, never left to assume it is backed up.
+
+set -uo pipefail
+
+store=${OMARCHY_PASSKEY_STORE:-${XDG_RUNTIME_DIR:?}/omarchy-passkey/store}
+bin=$(dirname "$(readlink -f "$0")")
+# The supervisor (omarchy-passkey-start) creates and owns the store. The watcher
+# only waits for it: creating or chmod-ing a parent here once tried to chmod /tmp.
+until [[ -d $store ]]; do sleep 0.5; done
+
+push_with_unlock() {
+  "$bin/omarchy-passkey-sync" push
+  case $? in
+    0) return 0 ;;
+    3)
+      if "$bin/omarchy-passkey-unlock"; then
+        "$bin/omarchy-passkey-sync" push && return 0
+      fi
+      notify-send -u critical "Passkey not backed up" \
+        "The Bitwarden vault is locked. This passkey exists only on this machine until you unlock it."
+      return 1
+      ;;
+    *)
+      notify-send -u critical "Passkey not backed up" "Syncing to Bitwarden failed; see: journalctl --user -u omarchy-passkey-watch"
+      return 1
+      ;;
+  esac
+}
+
+# `-r` cannot be trusted for the first passkey on a new site: passless creates the
+# site directory and renames the credential into it before inotify has attached a
+# watch there, so the file-level event is lost (observed: only CREATE,ISDIR arrives).
+# So ANY change under the store, including a new site directory, schedules a push
+# after a settle delay. Pushing is idempotent and reads the whole store, so an
+# extra or early trigger is harmless and a missed file event cannot lose a passkey.
+inotifywait -m -r -q -e create,moved_to,close_write --format '%f' "$store" | while read -r name; do
+  # Ignore passless's own bookkeeping and its in-progress temp files.
+  [[ $name == pin_state.json || $name == .tmp.* ]] && continue
+  # Let the write finish and collapse a burst into one push.
+  sleep 1
+  while read -r -t 0.5 _; do :; done
+  push_with_unlock || true
+done

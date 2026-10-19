@@ -1,0 +1,135 @@
+#!/usr/bin/python3
+"""Seal the Bitwarden master password for omarchy-passkey-unlock-root. Run as root.
+
+    sudo /usr/lib/omarchy-passkey/omarchy-passkey-enroll-root
+
+The password is the only secret this feature has, so it is handled narrowly:
+
+  * read from the controlling terminal with echo off (not argv, not the environment,
+    not a file a user can read, never printed),
+  * sealed straight into /etc/omarchy-passkey/master.cred with `systemd-creds` (host
+    key + TPM2 when present, so a stolen disk image is useless), mode 0600 root, in a
+    0700 root directory,
+  * written atomically, so a crash never leaves a half-written credential that the
+    unlock helper would then refuse or, worse, mis-decrypt.
+
+Be honest about what the seal does and does not do: `systemd-creds` serves
+decryption of system credentials over a world-accessible socket, so sealing does NOT
+stop a local user who can read the file. The file's 0600 root mode does that. The
+seal protects the file OFF this machine (backups, a stolen disk).
+
+Verification prints the password's length only. Never decrypt it to the terminal.
+"""
+
+import os
+import termios
+import subprocess
+import sys
+import tempfile
+
+DIRECTORY = "/etc/omarchy-passkey"
+SEALED = f"{DIRECTORY}/master.cred"
+CREDENTIAL_NAME = "omarchy-passkey-master"
+SYSTEMD_CREDS = "/usr/bin/systemd-creds"
+
+
+def die(message: str, code: int = 1) -> "NoReturn":  # noqa: F821
+    print(f"omarchy-passkey-enroll-root: {message}", file=sys.stderr)
+    sys.exit(code)
+
+
+def seal_key() -> str:
+    """host+tpm2 when a TPM2 is usable, else host only."""
+    result = subprocess.run(
+        ["/usr/bin/systemd-analyze", "has-tpm2", "--quiet"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+    )
+    return "host+tpm2" if result.returncode == 0 else "host"
+
+
+def seal(password: bytes, destination: str) -> None:
+    """Encrypt `password` to `destination` (0600) via systemd-creds, atomically."""
+    os.makedirs(DIRECTORY, mode=0o700, exist_ok=True)
+    os.chmod(DIRECTORY, 0o700)
+    fd, temporary = tempfile.mkstemp(dir=DIRECTORY, prefix=".master.", suffix=".tmp")
+    os.close(fd)
+    try:
+        # The password goes in on stdin: it is never an argument (visible in /proc).
+        subprocess.run(
+            [SYSTEMD_CREDS, "encrypt", f"--with-key={seal_key()}", f"--name={CREDENTIAL_NAME}", "-", temporary],
+            input=password, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env={},
+        )
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, destination)
+    except subprocess.CalledProcessError as exc:
+        die(f"systemd-creds failed: {exc.stderr.decode(errors='replace').strip()}")
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def sealed_length(path: str) -> int:
+    """Length of the decrypted password. Never the password itself."""
+    result = subprocess.run(
+        [SYSTEMD_CREDS, "decrypt", f"--name={CREDENTIAL_NAME}", path, "-"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, env={},
+    )
+    if result.returncode != 0:
+        die("the sealed credential does not decrypt")
+    return len(result.stdout)
+
+
+def read_hidden(prompt: str) -> bytes:
+    """Read one line from the controlling terminal with echo OFF, or raise OSError.
+
+    Unlike getpass, there is NO fallback: getpass reads stdin and echoes the input
+    when it cannot control the terminal, which would put the master password into
+    whatever captured the output. Here, no terminal, or echo that cannot be switched
+    off, is an error. Echo is switched off BEFORE the prompt is shown (so fast typing
+    is never echoed) and restored even if reading fails.
+
+    termios.error is not an OSError, so it is converted: callers handle one type.
+    """
+    with open("/dev/tty", "r+b", buffering=0) as tty:
+        try:
+            original = termios.tcgetattr(tty)
+            quiet = list(original)
+            quiet[3] &= ~(termios.ECHO | termios.ECHONL)
+            termios.tcsetattr(tty, termios.TCSAFLUSH, quiet)
+        except termios.error as exc:
+            raise OSError(f"cannot turn terminal echo off: {exc}") from exc
+        try:
+            tty.write(prompt.encode())
+            line = tty.readline()
+        finally:
+            termios.tcsetattr(tty, termios.TCSAFLUSH, original)
+            tty.write(b"\n")
+    return line.rstrip(b"\r\n")
+
+
+def main() -> int:
+    if os.geteuid() != 0:
+        die("must run as root: sudo " + os.path.realpath(__file__))
+    if sys.argv[1:]:
+        die("takes no arguments")
+
+    try:
+        first = read_hidden("Bitwarden master password: ")
+        second = read_hidden("Again: ")
+    except OSError as exc:
+        die(f"cannot read the password safely: {exc}")
+    if not first:
+        die("empty password")
+    if first != second:
+        die("the two entries differ; nothing was saved")
+
+    seal(first, SEALED)
+    expected = len(first)
+    first = second = b""
+    print(f"Sealed {SEALED} ({os.stat(SEALED).st_mode & 0o777:o}); decrypts to {sealed_length(SEALED)} bytes (expected {expected}).")
+    print("The unlock itself is checked by `omarchy-passkey-unlock`, which needs a fingerprint.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

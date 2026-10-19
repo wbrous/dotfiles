@@ -1,0 +1,27 @@
+[Unit]
+Description=Passkey authenticator backed by Bitwarden
+Documentation=https://github.com/pando85/passless
+# The vault server must be reachable before startup restores passkeys from it.
+After=omarchy-passkey-vault.service graphical-session.target
+Wants=omarchy-passkey-vault.service omarchy-passkey-watch.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-passkey-start
+Restart=on-failure
+RestartSec=3
+# Decrypted private keys live in memory and in $XDG_RUNTIME_DIR (tmpfs).
+LimitCORE=0
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+NoNewPrivileges=true
+# /dev/uhid must stay reachable. Access comes from the user's own `fido` group
+# membership, which a user manager only has after the next login: user units
+# cannot add groups themselves (SupplementaryGroups= fails with 216/GROUP).
+PrivateDevices=false
+ReadWritePaths=%t/omarchy-passkey
+
+[Install]
+WantedBy=graphical-session.target

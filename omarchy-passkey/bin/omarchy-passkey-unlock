@@ -1,0 +1,56 @@
+#!/usr/bin/python3
+# omarchy:summary=Unlock the Bitwarden vault that backs passkeys, after a fingerprint scan
+# omarchy:group=passkey
+# omarchy:args=[--check]
+"""Unlock the vault held by `bw serve`, gated by a fingerprint.
+
+This process never sees the master password. It asks polkit (`pkexec`) to run
+/usr/lib/omarchy-passkey/omarchy-passkey-unlock-root, which first requires a
+fingerprint scan, then reads the password from a root-only file and sends it
+straight to the user's `bw serve`. Nothing comes back but an exit code.
+
+Exit codes: 0 unlocked, 1 cancelled or not authorised (no/failed scan),
+2 vault or server error, 3 no master password has been enrolled yet.
+"""
+
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+
+import bw_vault
+import passkey_paths
+
+ROOT_HELPER = "/usr/lib/omarchy-passkey/omarchy-passkey-unlock-root"
+# pkexec exit codes: 126 = not authorised / dialog dismissed, 127 = auth could not be obtained.
+PKEXEC_NOT_AUTHORISED = (126, 127)
+HELPER_NO_SECRET = 3
+
+
+def main(argv: list[str]) -> int:
+    vault = bw_vault.Vault(bw_vault.unix_transport(passkey_paths.vault_socket()))
+    try:
+        if vault.is_unlocked():
+            return 0
+    except bw_vault.VaultError as exc:
+        print(f"omarchy-passkey-unlock: {exc}", file=sys.stderr)
+        return 2
+    if argv == ["--check"]:
+        return 2
+
+    # No arguments, and the helper ignores the environment: nothing the caller
+    # controls can redirect where the password is sent.
+    result = subprocess.run(["pkexec", ROOT_HELPER], stdin=subprocess.DEVNULL)
+    if result.returncode == 0:
+        return 0
+    if result.returncode in PKEXEC_NOT_AUTHORISED:
+        return 1
+    if result.returncode == HELPER_NO_SECRET:
+        print("omarchy-passkey-unlock: no master password enrolled; run omarchy-passkey-enroll", file=sys.stderr)
+        return 3
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

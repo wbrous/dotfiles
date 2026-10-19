@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# omarchy:summary=Start the passkey authenticator: unlock the vault, restore passkeys, run passless
+# omarchy:group=passkey
+# omarchy:hidden=true
+
+# Order matters. passless reads its credential directory once at startup and never
+# rescans, so the vault must be unlocked and pulled BEFORE it starts, or the
+# user's passkeys would be invisible until the next restart.
+#
+# If the vault cannot be unlocked the authenticator still starts, with whatever is
+# already in the RAM store. Refusing to start would break sign-in with passkeys
+# that are present; the user is told what is missing instead.
+
+set -uo pipefail
+
+bin=$(dirname "$(readlink -f "$0")")
+runtime=${XDG_RUNTIME_DIR:?}/omarchy-passkey
+export OMARCHY_PASSKEY_STORE=$runtime/store
+install -d -m 700 "$runtime" "$OMARCHY_PASSKEY_STORE"
+
+notify() { notify-send -u "$1" "Passkeys" "$2"; }
+
+if "$bin/omarchy-passkey-unlock"; then
+  case $("$bin/omarchy-passkey-sync" pull 2>&1; echo "rc=$?") in
+    *rc=0) ;;
+    *rc=4) notify critical "A passkey in Bitwarden conflicts with one on this machine. Nothing was changed; resolve it before syncing." ;;
+    *) notify critical "Could not restore passkeys from Bitwarden. Starting with the ones already on this machine." ;;
+  esac
+else
+  notify normal "Bitwarden is locked. Passkeys saved there are unavailable until you unlock it (omarchy-passkey-unlock) and restart the authenticator."
+fi
+
+export PASSLESS_BACKEND_TYPE=local
+export PASSLESS_LOCAL_PATH=$OMARCHY_PASSKEY_STORE
+# Bitwarden marks every passkey backed up (BE=1). A relying party that saw BE=1
+# at registration rejects BE=0 later, so new passkeys must be created as BE=1 too.
+export PASSLESS_ENABLE_CREDENTIAL_BACKUP=true
+
+exec passless
