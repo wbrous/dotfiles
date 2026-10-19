@@ -22,9 +22,9 @@
 set -euo pipefail
 
 FORK_REPO="wbrous/passless"
-FORK_VERSION="0.20.2-omarchy.1"
+FORK_VERSION="0.20.2-omarchy.2"
 # SHA-256 of the release tarball. Pinned here so a tampered release cannot be installed.
-FORK_SHA256="10c996b8526a7f9958bce670abd3fe288e634d6eaa6d567c8c641a206a673150"
+FORK_SHA256="bc73bf3b35705fcb835ced7106e74b8827ae0abd3c08090353f3044ef2af80dc"
 FORK_ASSET="passless-${FORK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
 
 SRC=${OMARCHY_PASSKEY_SRC:-$(dirname "$(readlink -f "$0")")/..}
@@ -62,6 +62,14 @@ echo "${FORK_SHA256}  $work/$FORK_ASSET" | sha256sum -c - >/dev/null || {
 tar -xzf "$work/$FORK_ASSET" -C "$work" passless
 sudo install -o root -g root -m 755 "$work/passless" /usr/local/bin/passless
 
+echo "Linking the passkey commands onto PATH..."
+# Symlinks, not copies: editing the repo changes what runs, no reinstall needed.
+# The units call /usr/bin/omarchy-passkey-{start,watch}; the group/indexer reads
+# the omarchy: headers through the same links. The .bak guard keeps an aborted
+# run from shadowing: install-new-then-rename is atomic per link.
+for cmd in omarchy-passkey-start omarchy-passkey-sync omarchy-passkey-unlock omarchy-passkey-watch; do
+  sudo ln -sf "$SRC/bin/$cmd" /usr/local/bin/$cmd
+done
 echo "Installing the unlock helpers (root-owned, not writable by you)..."
 # These run as root. If a user could edit them, they could make root hand over the
 # master password, so they are root-owned 755 in a root-owned directory.

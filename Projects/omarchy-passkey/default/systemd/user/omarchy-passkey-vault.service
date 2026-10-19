@@ -17,7 +17,8 @@ RuntimeDirectoryPreserve=yes
 Restart=on-failure
 RestartSec=3
 LimitCORE=0
-PrivateTmp=true
+# No PrivateTmp: the unix socket must be created on the real /run path so the
+# authenticator, sync bridge and unlock helper (outside this namespace) reach it.
 NoNewPrivileges=true
 # `bw` writes its data and config under ~/.config/Bitwarden CLI.
 ProtectSystem=strict

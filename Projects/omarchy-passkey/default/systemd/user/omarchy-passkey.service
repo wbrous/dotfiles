@@ -8,7 +8,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/omarchy-passkey-start
+ExecStart=/usr/local/bin/omarchy-passkey-start
 Restart=on-failure
 RestartSec=3
 # Decrypted private keys live in memory and in $XDG_RUNTIME_DIR (tmpfs).
@@ -20,8 +20,12 @@ NoNewPrivileges=true
 # /dev/uhid must stay reachable. Access comes from the user's own `fido` group
 # membership, which a user manager only has after the next login: user units
 # cannot add groups themselves (SupplementaryGroups= fails with 216/GROUP).
-PrivateDevices=false
-ReadWritePaths=%t/omarchy-passkey
+# passless keeps its instance lock and agent socket in $XDG_RUNTIME_DIR/passless
+# (its own default); our store lives in %t/omarchy-passkey. Both are tmpfs.
+# RuntimeDirectory creates %t/passless before the namespace is built, which
+# ReadWritePaths alone cannot do (it requires the path to exist).
+RuntimeDirectory=passless omarchy-passkey
+ReadWritePaths=%t/omarchy-passkey %t/passless
 
 [Install]
 WantedBy=graphical-session.target
