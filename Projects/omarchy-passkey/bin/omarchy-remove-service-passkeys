@@ -9,16 +9,21 @@
 
 set -uo pipefail
 
-systemctl --user disable --now omarchy-passkey.service omarchy-passkey-watch.service omarchy-passkey-vault.service 2>/dev/null || true
+user=${SUDO_USER:-$USER}
+runtime=/run/user/$(id -u "$user")
+
+# As in the installer: systemctl --user must run as the invoking user, not
+# root. XDG_RUNTIME_DIR is also unset for root here, so set it for the rm.
+sudo -u "$user" XDG_RUNTIME_DIR=$runtime systemctl --user disable --now omarchy-passkey.service omarchy-passkey-watch.service omarchy-passkey-vault.service 2>/dev/null || true
 
 # Decrypted working copy in RAM; the vault still has every passkey.
-rm -rf "${XDG_RUNTIME_DIR:?}/omarchy-passkey"
-
 sudo rm -f /etc/udev/rules.d/90-passless.rules
 sudo udevadm control --reload-rules
 # The fork binary, helpers and polkit policy the installer put in place.
 sudo rm -f /usr/local/bin/passless /usr/share/polkit-1/actions/com.gir0fa.omarchy-passkey-unlock.policy
 sudo rm -f /usr/lib/omarchy-passkey/omarchy-passkey-unlock-root /usr/lib/omarchy-passkey/omarchy-passkey-enroll-root
+# The deployed user units.
+sudo -u "$user" rm -f /home/"$user"/.config/systemd/user/omarchy-passkey.service /home/"$user"/.config/systemd/user/omarchy-passkey-watch.service /home/"$user"/.config/systemd/user/omarchy-passkey-vault.service
 
 echo ""
 echo "Passkeys have been removed. Your passkeys remain in your Bitwarden vault."

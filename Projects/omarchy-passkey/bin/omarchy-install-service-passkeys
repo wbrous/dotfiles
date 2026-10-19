@@ -79,9 +79,17 @@ echo 'KERNEL=="uhid", GROUP="fido", MODE="0660"' | sudo tee /etc/udev/rules.d/90
 sudo udevadm control --reload-rules
 sudo udevadm trigger --action=change /sys/devices/virtual/misc/uhid
 
-echo "Enabling passkey services..."
-systemctl --user daemon-reload
-systemctl --user enable omarchy-passkey-vault.service omarchy-passkey-watch.service omarchy-passkey.service
+echo "Installing passkey services..."
+unit_dir=/home/$user/.config/systemd/user
+sudo -u "$user" mkdir -p "$unit_dir"
+for unit in omarchy-passkey-vault.service omarchy-passkey-watch.service omarchy-passkey.service; do
+  sudo install -o "$user" -g "$user" -m 644 "$SRC/default/systemd/user/$unit" "$unit_dir/$unit"
+done
+
+# systemctl --user must run as the invoking user, not root: sudo wipes the
+# session bus address, so root cannot reach the user's bus.
+sudo -u "$user" XDG_RUNTIME_DIR=/run/user/"$(id -u "$user")" systemctl --user daemon-reload
+sudo -u "$user" XDG_RUNTIME_DIR=/run/user/"$(id -u "$user")" systemctl --user enable omarchy-passkey-vault.service omarchy-passkey-watch.service omarchy-passkey.service
 
 echo ""
 echo "Passkeys are installed. Three steps remain:"
