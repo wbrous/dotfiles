@@ -218,7 +218,7 @@ export default function managedSkillDotfilesExtension(pi: ExtensionAPI): void {
 				"commit",
 				"-m",
 				// Matches the repo's existing convention, e.g.
-				// "Add managed-skill: watermarks-remover-frontmatter-value-false-positive".
+				// "Add managed-skill: git-commit-gpg-fingerprint-timeout-retry".
 				action === "create"
 					? `Add managed-skill: ${name}`
 					: `Update managed-skill: ${name}`,
