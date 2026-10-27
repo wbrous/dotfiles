@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Open omp in a new Tern window, in the active terminal's cwd.
+#
+# Precondition:  invoked from a Hyprland keybinding; `omp` and `tern` are on PATH.
+# Postcondition: a Tern window with a tab running `omp --auto-approve` (the same
+#   flags `omarchy-agent` uses for omp) is launched from active-terminal-cwd's
+#   directory. `tern -e` runs the command in the launching process's cwd, hence
+#   the cd. xdg-terminal-exec is deliberately not used: Tern's desktop entry
+#   accepts neither --dir nor --app-id, so both would be silently dropped.
+set -euo pipefail
+
+cd "$(active-terminal-cwd)"
+
+exec setsid uwsm-app -- tern -e omp --auto-approve
