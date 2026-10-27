@@ -8,102 +8,87 @@ description: "Machine-specific verdict map for dotfiles scout surveys on this Ar
 Known-good / known-bad verdicts for the dotfiles fan-out scout survey on this
 machine (Wils' Arch/Omarchy desktop), so future surveys don't re-derive them
 from scratch. Use with the `dotfiles-bare-repo-gitleaks-hook` skill's scout
-survey and the `/dotfiles-scan` extension prompt. These verdicts were produced
-by full scout sweeps on 2026-08-28 and 2026-09-05.
+survey and the `/dotfiles-scan` extension prompt. Verdicts produced by full
+scout sweeps on 2026-08-28, 2026-09-05 and 2026-10-26.
 
 ## DEF ADD (clean, committed — skip re-verifying, but re-check "already tracked")
 
-- `.config/hypr/**` — all 12 files (apps/{cider,hermes,pulsemeeter}.lua,
+- `.config/hypr/**` — 12 real personalized files (apps/{cider,hermes,pulsemeeter}.lua,
   autostart.lua, bindings.lua, hypridle.conf, hyprland.lua, hyprlock.conf,
-  hyprsunset.conf, looknfeel.lua, monitors.lua, xdph.conf) are real personalized
-  configs, NOT omarchy-store symlinks. Secret-scan clean (false positives only:
-  `token` in xdph allow_token_by_default, `Password` bind labels).
+  hyprsunset.conf, looknfeel.lua, monitors.lua, xdph.conf), NOT omarchy-store symlinks.
+  Plus `apps/tern.lua` (2026-10).
 - `.config/omarchy/plugins/wils.*` — `wils.notifications`, `wils.gallium-cheatsheet`,
-  `wils.indicators` (8 files), and `wils.audio` (3 files).
-- `.config/omarchy/hooks/theme-set.d/{omarchy,20-zen,30-cider}-theme-sync.sh` — real executable
-  scripts (not symlinks); the omp extension calls `omarchy-theme-sync.sh` at this path.
-- `.config/autostart/org.fcitx.Fcitx5.desktop` + `limine-snapper-notify.desktop` — user-created
-  overrides disabling unwanted desktop autostarts (`Hidden=true`), alongside
-  `com.abdownloadmanager.desktop` + `jetbrains-toolbox.desktop`.
-- `.config/gh/hosts.yml` — NO token (auth is keyring-backed), clean profiles.
-- `.config/gtk-3.0/bookmarks` — user bookmarks.
-- `.config/fcitx5/conf/xcb.conf` — deliberate setting.
-- `.config/tensaku/config.toml` — personal reading annotation size.
-- `.config/pulsemeeter/config.json` — personal audio routing configuration.
-- `.config/pupgui/config.ini` — ProtonUp-Qt configuration.
-- `.config/aether/settings.json` + `blueprints/Aether.json` — Aether theme settings and palette.
-- `.config/Android Open Source Project/Emulator.conf` — Android emulator configuration.
-- `.config/hyprland-preview-share-picker/config.yaml`.
-- `.bash_logout` — stock Arch stub. `.bash_history` is NOT — see NO.
-- `.gemini/projects.json` — clean project-name mapping.
+  `wils.indicators`, `wils.audio` (needs `WATERMARKS_REMOVER_DISABLE=1` if Nerd Font glyphs trip it).
+- `.config/omarchy/hooks/theme-set.d/{omarchy,20-zen,30-cider}-theme-sync.sh`, `10-owe-sync`.
+- `.config/autostart/org.fcitx.Fcitx5.desktop` + `limine-snapper-notify.desktop`
+  (+ `com.abdownloadmanager.desktop`, `jetbrains-toolbox.desktop`).
+- `.config/gh/hosts.yml` (no token), `.config/gtk-3.0/bookmarks`, `.config/fcitx5/conf/xcb.conf`,
+  `.config/tensaku/config.toml`, `.config/pulsemeeter/config.json`, `.config/pupgui/config.ini`,
+  `.config/aether/settings.json` + `blueprints/Aether.json`, `.config/Android Open Source Project/Emulator.conf`,
+  `.config/hyprland-preview-share-picker/config.yaml`, `.bash_logout`, `.gemini/projects.json`.
+- Added 2026-10 (hand-authored, with contract comments): `.config/nvim/lua/plugins/lualine-transparent.lua`,
+  `.config/wireplumber/wireplumber.conf.d/kef-lsx-no-suspend.conf`, `.config/hyprland-mimeapps.list`,
+  `.config/xdg-desktop-portal/hyprland-portals.conf`, `.config/strata/settings.toml`,
+  `.config/tern/settings.json`, `.config/cursor/cli-config.json`, `.config/uad/config.toml`,
+  `.local/bin/{active-terminal-cwd,git-resign-own,mitm-passthrough-enable,mitm-passthrough-disable,omarchy-launch-screensaver,omp-launch,omp-launch-cwd,pinentry-fprintd,tern-launch-cwd}`,
+  `.local/share/applications/so.stencil.tern{,.open,.url}.desktop`.
 
 ## MAYBE (skip by default, list only)
 
-- ALL vendor skill dirs: `.claude/skills/*`, `.codex/skills/{omarchy,diagnose-crash}`,
-  `.gemini/config/skills/*`, `.pi/agent/skills/*`, `.agents/skills/*`,
-  `.grok/skills/*`, `.commandcode/skills/*`, `.factory/skills/*`,
-  `.config/devin/skills/*` — symlinks into the shared `~/.agents/skills` store
-  (itself symlinked). Same content across vendors. Track `~/.agents/skills` once
-  instead if versioning is wanted.
-- `.codex/skills/.system/*` — vendor auto-installed system skills
-  (`.codex-system-skills.marker` present), churn risk.
-- Backups: `.config/hypr/old-conf-backup-20260811/*`, `*.omarchy-upgrade-to-quattro.*.bak`,
-  `*.bak` config backups, `.omp/agent/APPEND_SYSTEM.md.old`.
-- Stubs/empty/regenerable: `.config/lazygit/config.yml` (0B), `.config/lazydocker/config.yml` (0B),
-  `.config/nvim/lazy-lock.json`, `.config/codexctl/version-ids.json`,
-  `.copilot/config.json` + `hooks/orca.json`, `.copilot/settings.json`,
-  `.grok/hooks/herdr.json`, `.grok/hooks/herdr-agent-state.sh`,
-  `.pi/agent/extensions/herdr-agent-state.ts`, `.codex/hooks.json.bak`,
-  `.claude/remote-settings.json`, `.claude/.last-update-result.json`, `AGENTS.md.disabled`,
-  `.hermes/{desktop.json,models.json}`, `.config/manicode/{freebuff,rg,tree-sitter.wasm}`,
-  `.config/hermes-desktop/{Preferences,Dictionaries}`, `.config/fcitx5/conf/{clipboard,notifications}.conf`,
-  `.config/evince/print-settings`, `.config/Omacom/omacalc.conf`, `.config/gram/settings.jsonc`.
-- Generated Omarchy themes: `.config/omarchy/themes/{pink,spectrum-os,aether,ame-quattro}` —
-  `ame-quattro` is a standalone git repo; `aether` is a symlink to `~/.config/aether/theme`;
-  `pink` and `spectrum-os` are generated by Aether with large image assets.
+- ALL vendor skill dirs (`.claude/skills/*`, `.codex/skills/*`, `.gemini/config/skills/*`,
+  `.pi/agent/skills/*`, `.agents/skills/*`, `.grok/skills/*`, `.commandcode/skills/*`,
+  `.factory/skills/*`, `.hermes/skills/*`, `.config/devin/skills/*`) — symlinks into
+  `~/.agents/skills` or `/usr/share/omarchy/default/agents/skills`.
+- `.codex/skills/.system/*`, `.claude/skills/synced/`, `.claude/plugins/marketplaces/*`,
+  `.grok/docs/**`, `.grok/README.md` — vendor-installed/regenerable.
+- Backups: every `*.bak*`, `*.omarchy-upgrade-to-quattro.*`, `.config/hypr/old-conf-backup-*`,
+  `.config/hypr/strata-keybind-backup-*`, `.omp/agent/APPEND_SYSTEM.md.old`.
+- Stubs/regenerable/UI-state: 0-byte lazygit/lazydocker/gtk-4.0 files, `.config/nvim/lazy-lock.json`,
+  `.config/codexctl/version-ids.json`, `.copilot/{config,settings}.json`, `.grok/hooks/herdr*`,
+  `.pi/agent/extensions/herdr-agent-state.ts`, opencode/udiskie herdr/strata hook stubs,
+  `.config/{calibre,FigCraft,vectorcraft,photocraft ui+preferences,pdfcraft,Pinta,tern/files.json,strata/tabs.toml,QtProject.conf,tool_state}`,
+  `.config/obs-studio/plugin_config/rtmp-services/*`, `.config/fcitx5/**` (except xcb.conf), `.config/cava/**`
+  (4 shaders carry a third party's email in a header), `.config/omarchy/lock-designs/*.qml` (117 files, clean but never bulk-decided),
+  `.npmrc`/`.zshrc` (installer one-liners), `.config/Equicord/*` (settings.json is account-linked).
+- Third-party checkouts with own `.git`: `.config/omarchy/plugins/{daniel-marr.omafilee,io.github.elevate08.qs-bitwarden-cli,robzolkos.github}`; `.local/bin/vykey` (vendored).
+- Generated `.local/share/applications/*.desktop` (webapps, wine, electron, fcitx, JDK, JetBrains, Steam) and `.local/bin` binaries/symlinks into tool installs.
+- Generated Omarchy themes: `.config/omarchy/themes/{pink,spectrum-os,aether,ame-quattro}`.
 
-## NO — live credentials on disk (NEVER commit; re-check any new file matching these)
+## NO — live credentials on disk (NEVER commit)
 
-- **Context7 key `ctx7sk-a1a43f99-…` is duplicated across FIVE files**:
-  `.omp/agent/mcp.json`, `.codex/config.toml` (+`.bak`), `.gemini/config/mcp_config.json`,
-  `.gemini/settings.json`, and `.config/opencode/opencode.json`. If one leaks, all five carry the same key.
-- `.omp/agent/mcp.json` — 4 live creds: ctx7sk-, figd_ ×2, glpat- (git.phermata.org), ghp_.
-- `.claude/.credentials.json` — Claude OAuth sk-ant-oat01/ort01.
-- `.claude.json` — carries Context7 and tool keys in mcpServers block.
-- `.config/glab-cli/config.yml` — live glpat- for git.phermata.org.
-- `.config/manicode/credentials.json` — authToken + fingerprint + email.
-- `.config/remarkable-xovi-installer/config.json` — plain-text SSH password (`ssh_password`).
-- `.config/aether/wallhaven.json` — live Wallhaven API key (`apiKey`).
-- `.bash_history` — live Discord bot token (MTI4Mjcz…).
-- `.pi/agent/auth.json` — auth file.
-- `.hermes/.env` + `.hermes/auth.json` — environment secrets and API keys.
+- Context7 key `ctx7sk-…` duplicated across `.omp/agent/mcp.json`, `.codex/config.toml` (+`.bak`),
+  `.gemini/config/mcp_config.json`, `.gemini/settings.json`, `.config/opencode/opencode.json`.
+- `.omp/agent/mcp.json` (ctx7sk, figd_ x2, glpat-, ghp_), `.omp/auth-broker.token`,
+  `.omp/run/collab-hosts/*.json` (bearer token), `.claude/.credentials.json`, `.claude.json` (+ `.claude/backups/*`),
+  `.claude/daemon/control.key`, `.config/glab-cli/config.yml`, `.config/manicode/credentials.json`,
+  `.config/remarkable-xovi-installer/config.json`, `.config/aether/wallhaven.json`, `.bash_history`,
+  `.pi/agent/auth.json`, `.hermes/.env` + `auth.json`, `.convex/config.json` (JWT), `.docker/.token_seed`,
+  `.cloudflared/{cert.pem,orgbot.json}`, `.config/opencode/service.json` (password),
+  `.config/obs-studio/plugin_config/obs-websocket/config.json` (server_password),
+  `.config/photocraft/control-token`, `.config/passless/extension_key.pem`, `.config/pulse/cookie`, `.pager/`.
+- Account identity: `.copilot/config.json`, `.config/Equicord/settings/settings.json`.
 
 ## NO — machine data (runtime/session/db/cache/browser)
 
-- Browser profiles: `.config/hermes-desktop/**` (full Chromium profile: Cookies,
-  DIPS, Trust Tokens, Session Storage, GPU caches, Shared Dictionary), also
-  Brave/chromium/brave-*/google-chrome*/microsoft-edge* dirs under `.config`.
-- Session stores: `.claude/projects/**/*.jsonl` + `subagents/*`, `.claude/history.jsonl`,
-  `.claude/jobs/*`, `.claude/daemon/*` (incl. control.key, roster.json), `.copilot/session-*`,
-  `.copilot/session-store.db*`, `.copilot/command-history-state.json`, `.pi/pi-acp/*`,
-  `.cline/kanban/**`, `.cline/data/**`, `.cline/data/db/*`, `.config/manicode/projects/**/chats/**` +
-  `message-history.json` (PII), `.config/herdr/session.json`.
-- SQLite DBs (+wal/shm sidecars): `.codex/*.sqlite*` (state/logs/goals/memories/queue),
-  `.copilot/session-store.db*`, `.cline/data/db/*`, `.omp/agent/{models,history,agent}.db*`,
-  `.omp/cache/*.db*`, `.omp/stats.db`, `.config/github-copilot/auth.db`.
-- Runtime/log/socket/pid: `.omp/agent/terminal-sessions/*`, `.claude/*.{log,lock}`,
-  `.config/cliamp/*`, `.config/herdr/*.{log,sock}`, `.config/hermes-desktop/logs/*`,
-  `mimeinfo.cache`, `gpu_cache.json`, `install-id`, `last-changelog-version`,
-  `.config/fcitx/dbus/*`, `.config/fcitx5/conf/cached_layouts`, `.steampid`,
-  `.pulse-cookie`, `.emulator_console_auth_token`.
+- Browser/Electron profiles under `.config` (hermes-desktop, discord, zen, chromium, brave, chrome, figma-linux, Signal, 1Password, Bitwarden...).
+- Sessions/history: `.claude/{projects,history.jsonl,jobs,daemon}`, `.copilot/{session-state,session-store.db*,logs,...}`,
+  `.grok/{sessions,memtrace,logs}`, `.cline/{data,kanban}/**`, `.pi/pi-acp/*`, `.config/manicode/projects/**`.
+- SQLite + wal/shm: `.codex/*.sqlite*`, `.omp/agent/{agent,history}.db*`, `.omp/stats.db`, `.crush/crush.db`, `.config/github-copilot/auth.db`.
+- `.codex/.tmp`, `.docker/buildx`, `.config/dconf/user`, logs, locks, sockets, pids, `.pulse-cookie`, `.steampid`, `.emulator_console_auth_token`.
 
-## Survey mechanics (fast path for the next sweep)
+## Survey mechanics (fast path)
 
-1. Snapshot tracked: `git --git-dir=$HOME/.dotfiles --work-tree=$HOME ls-tree -r --name-only HEAD | sort > /tmp/trk`.
-2. Candidate list: `find -L <dir> -type f | grep -vFx -f /tmp/trk` per cluster; narrow
-   `.config` to config-y roots (skip browser/app-data dirs — they're 10k+ files of noise).
-3. Dispatch scouts in parallel (or survey in-process if delegate credits are exhausted); evaluate
-   against this map and regex patterns.
-4. Re-verify DEF ADDs against `/tmp/trk` before staging (skip already-tracked);
-   commit one logical group or one path at a time, never `add -A`. Gitleaks hook runs
-   per commit.
+1. Snapshot: `git --git-dir=$HOME/.dotfiles --work-tree=$HOME ls-tree -r --name-only HEAD > /tmp/trk`
+   (user prompts sometimes write `'$HOME/.dotfiles'` in single quotes — use a real expanded path).
+   Filter with `grep -vFxf` (NOT `comm`; locale sort-order complaints).
+2. Candidates: `find <dir> \( -type f -o -type l \) | grep -vFxf /tmp/trk` per cluster; prune noise
+   (projects, sessions, cache, node_modules, .git). `.config` has 100k+ untracked files in browser/app dirs; narrow to config-y roots.
+3. Write per-cluster path lists to /tmp/survey/*.txt, pre-filter .bak/log/lock/cache into MAYBE/NO yourself,
+   and point scouts at the list files (7 scouts in one `task` batch finishes in ~45s).
+4. **Scouts over-call DEF ADD** (state files, generated stubs, recent-path files, files with third-party emails).
+   Independently re-verify: strict secret-shape grep + email/IP grep + read each file. Commit only hand-authored,
+   durable, secret-free files. Scouts were right on NO for password-bearing files.
+5. Commit sequentially one path at a time (`add -- path`, `commit -m "Add path"`); verify each commit has exactly 1 file.
+   Hook appends `Co-authored-by: wbrous-dev-ai` trailer automatically.
+6. Another process may commit to `.dotfiles` mid-survey (2026-10: watermarks-remover removal `1c8d892`); a tracked-count
+   delta mismatch means check `git log <snapshot>..HEAD` before suspecting your own commits.
