@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Open a new Tern window in the working directory of the active terminal.
+#
+# Precondition:  invoked from a Hyprland keybinding (needs Wayland session env).
+# Postcondition: a Tern window is launched via uwsm-app with `tern DIR`, DIR
+#   being active-terminal-cwd's answer.
+#
+# Known limitation: once the Tern daemon holds a session, `tern DIR` attaches
+# the new window to that session and does not add a tab in DIR (`tern --help`:
+# "--dir only a fresh session starts in").
+set -euo pipefail
+
+exec setsid uwsm-app -- tern "$(active-terminal-cwd)"
