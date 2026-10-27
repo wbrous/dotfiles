@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Disable transparent mitmproxy egress capture for the libvirt analysis VM.
+#
+# Removes the nftables nat-prerouting redirect and stops mitmweb, restoring
+# the VM's normal (unintercepted) internet path through libvirt NAT.
+set -euo pipefail
+
+STATE_DIR="$HOME/.local/state/mitm-passthrough"
+PID_FILE="$STATE_DIR/mitmweb.pid"
+
+DID_SOMETHING=0
+
+if sudo -n nft list table ip mitm_egress >/dev/null 2>&1; then
+	sudo nft delete table ip mitm_egress
+	echo "mitm-passthrough: nftables redirect removed."
+	DID_SOMETHING=1
+fi
+
+if [[ -f "$PID_FILE" ]]; then
+	MITM_PID="$(cat "$PID_FILE")"
+	if kill -0 "$MITM_PID" 2>/dev/null; then
+		kill "$MITM_PID"
+		for _ in $(seq 1 20); do
+			kill -0 "$MITM_PID" 2>/dev/null || break
+			sleep 0.2
+		done
+		kill -0 "$MITM_PID" 2>/dev/null && kill -9 "$MITM_PID" 2>/dev/null || true
+		echo "mitm-passthrough: mitmweb (pid $MITM_PID) stopped."
+		DID_SOMETHING=1
+	fi
+	rm -f "$PID_FILE"
+fi
+
+# Catch any stray mitmweb process not tracked by the pid file.
+if pgrep -f 'mitmweb --mode transparent' >/dev/null 2>&1; then
+	pkill -f 'mitmweb --mode transparent' || true
+	echo "mitm-passthrough: stray mitmweb process(es) killed."
+	DID_SOMETHING=1
+fi
+
+if [[ "$DID_SOMETHING" -eq 0 ]]; then
+	echo "mitm-passthrough: already disabled (nothing to do)."
+else
+	echo "mitm-passthrough: disabled. VM traffic no longer intercepted."
+fi
