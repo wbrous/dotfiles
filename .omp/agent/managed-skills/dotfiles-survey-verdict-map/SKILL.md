@@ -21,8 +21,8 @@ by full scout sweeps on 2026-08-28 and 2026-09-05.
 - `.config/omarchy/plugins/wils.*` — `wils.notifications`, `wils.gallium-cheatsheet`,
   `wils.indicators` (8 files), and `wils.audio` (3 files, requires
   `WATERMARKS_REMOVER_DISABLE=1` if Nerd Font unicode glyphs trigger watermarks-remover).
-- `.config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh` — hook symlink to
-  `~/.omp/omarchy-theme-sync.sh`.
+- `.config/omarchy/hooks/theme-set.d/{omarchy,20-zen,30-cider}-theme-sync.sh` — real executable
+  scripts (not symlinks); the omp extension calls `omarchy-theme-sync.sh` at this path.
 - `.config/autostart/org.fcitx.Fcitx5.desktop` + `limine-snapper-notify.desktop` — user-created
   overrides disabling unwanted desktop autostarts (`Hidden=true`), alongside
   `com.abdownloadmanager.desktop` + `jetbrains-toolbox.desktop`.
