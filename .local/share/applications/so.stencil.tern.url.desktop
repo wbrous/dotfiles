@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tern
+Exec="/home/wils/.local/opt/tern/tern" --open-url %u
+MimeType=x-scheme-handler/tern;
+Icon=so.stencil.tern
+StartupWMClass=so.stencil.tern
+NoDisplay=true
+Terminal=false
