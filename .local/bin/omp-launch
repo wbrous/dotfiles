@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Open omp in a new Tern window, started in ~/Work.
+#
+# Precondition:  invoked from a Hyprland keybinding; `omp` and `tern` are on PATH.
+# Postcondition: a Tern window with a tab running `omp --auto-approve` (the same
+#   flags `omarchy-agent` uses for omp) is launched from ~/Work when it exists,
+#   else $HOME. ~/Work mirrors omarchy-agent: agents refuse to remember trust
+#   for $HOME, so starting there re-asks on every session.
+set -euo pipefail
+
+if [[ -d $HOME/Work ]]; then
+  cd "$HOME/Work"
+else
+  cd "$HOME"
+fi
+
+exec setsid uwsm-app -- tern -e omp --auto-approve
