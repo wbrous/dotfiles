@@ -9,8 +9,8 @@ Make Cider's accent color and light/dark mode follow the active Omarchy theme wh
 
 ## Layout
 
-- Canonical script: `~/.omp/cider-omarchy-theme-sync.sh` (tracked in dotfiles next to the Zen and omp sync scripts).
-- Hook: symlink `~/.config/omarchy/hooks/theme-set.d/30-cider-theme-sync.sh -> ~/.omp/cider-omarchy-theme-sync.sh`. Machine-specific, untracked; recreate with `ln -sf`.
+- Script: `~/.config/omarchy/hooks/theme-set.d/30-cider-theme-sync.sh`, a real file tracked in dotfiles (mode 100755) and run by Omarchy directly. No symlink, no copy under `~/.omp/` (runtime data).
+- Sibling hooks in the same dir: `omarchy-theme-sync.sh` (omp) and `20-zen-theme-sync.sh`. If `+x` is lost (the watermarks-remover pre-commit can strip it and leave `.bak` files), `chmod +x` it, because Omarchy skips a non-executable hook.
 - Test overrides: `CIDER_SYNC_COLORS_FILE=<colors.toml>` (try any theme without switching yours) and `CIDER_SYNC_CONFIG=<spa-config.yml>`.
 
 ## Where Cider stores config (not where you would guess)
