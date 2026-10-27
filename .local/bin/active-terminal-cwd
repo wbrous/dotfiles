@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Print the working directory of the active terminal window.
+#
+# Precondition:  run under the Hyprland session (needs hyprctl).
+# Postcondition: prints one existing directory path on stdout:
+#   - the focused block's cwd, if the active window is Tern itself
+#     (omarchy-cmd-terminal-cwd cannot see inside Tern: it only understands
+#     kitty sockets and a plain shell child of the window pid);
+#   - otherwise omarchy-cmd-terminal-cwd's answer (falls back to $HOME).
+set -euo pipefail
+
+active_class=$(hyprctl activewindow -j | jq -r '.class // empty')
+
+cwd=""
+if [[ $active_class == "so.stencil.tern" ]]; then
+  cwd=$(tern inspect --json | jq -r '[.sessions[].tabs[] | select(.shown) | .blocks[] | select(.focused) | .cwd][0] // empty')
+fi
+
+if [[ ! -d $cwd ]]; then
+  cwd=$(omarchy-cmd-terminal-cwd)
+fi
+
+echo "$cwd"
