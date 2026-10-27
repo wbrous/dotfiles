@@ -15,20 +15,19 @@ Generate an omp custom theme (`~/.omp/agent/themes/omarchy.json`) from the curre
 
 ## Design: two parts, one shared script
 
-1. **Shared conversion script** (canonical location: `~/.omp/omarchy-theme-sync.sh`): reads `colors.toml`, writes the full omp theme JSON, and updates `~/.omp/agent/config.yml`. Keep it OUT of `~/.local/share/omp/` — that XDG-data path is not the active agent dir for this setup and its presence confuses state resolution.
-2. **Omarchy `theme-set` hook**: `omarchy hook install theme-set <script>` **copies** the script into `~/.config/omarchy/hooks/theme-set.d/`, but that's not required — Omarchy doesn't care if it's a symlink. Prefer a **symlink to the canonical script** so edits propagate without re-copying. Keep the canonical script at `~/.omp/omarchy-theme-sync.sh` and point the hook at it:
-   `ln -sf ~/.omp/omarchy-theme-sync.sh ~/.config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh`
-3. **omp extension** (`~/.omp/agent/extensions/*.ts`): on `session_start`, spawn the same shared script (`node:child_process` `spawnSync`), then if `ctx.hasUI`, call `await ctx.ui.setTheme("omarchy")` to apply immediately without a restart. `ctx.ui.setTheme(name)` loads and applies any theme (built-in or custom) by name. The extension references the script via `join(homedir(), ".omp/omarchy-theme-sync.sh")`.
+1. **Shared conversion script** (canonical location: `~/.config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh`): reads `colors.toml`, writes the full omp theme JSON, and updates `~/.omp/agent/config.yml`. It is a real, tracked, executable file in the hooks dir, so Omarchy runs it directly with no symlink. Keep it OUT of `~/.local/share/omp/` (not the active agent dir here) and out of `~/.omp/` (runtime data: logs, tokens, stats.db).
+2. **Omarchy `theme-set` hook**: the script above IS the hook. Omarchy runs every executable file in `theme-set.d/`, in name order. The Zen (`20-`) and Cider (`30-`) hooks sit beside it; see `zen-browser-omarchy-theme-sync-hook` and `cider-omarchy-theme-sync-hook`.
+3. **omp extension** (`~/.omp/agent/extensions/*.ts`): on `session_start`, spawn the same shared script (`node:child_process` `spawnSync`), then if `ctx.hasUI`, call `await ctx.ui.setTheme("omarchy")` to apply immediately without a restart. `ctx.ui.setTheme(name)` loads and applies any theme (built-in or custom) by name. The extension references the script via `join(homedir(), ".config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh")`; if the script moves, update that constant or the sync silently skips.
 
 This covers both paths: theme switched while omp isn't running (hook writes the file), and omp started fresh (extension re-syncs + applies live).
 
 ## Dotfiles sync (bare repo)
 
-Both artifacts are tracked in the dotfiles bare repo (`~/.dotfiles`, commit convention "Add omp-omarchy theme sync script and extension"):
-- `.omp/omarchy-theme-sync.sh` — canonical script (mode 100755)
-- `.omp/agent/extensions/omarchy-theme-sync.ts` — extension (mode 100644)
+Both artifacts are tracked in the dotfiles bare repo (`~/.dotfiles`):
+- `.config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh`: the script and hook (mode 100755, a real file, not a symlink)
+- `.omp/agent/extensions/omarchy-theme-sync.ts`: extension (mode 100644)
 
-The `theme-set.d/omarchy-theme-sync.sh` hook entry is a **machine-specific symlink and deliberately NOT tracked** — recreate on a fresh machine with `ln -sf ~/.omp/omarchy-theme-sync.sh ~/.config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh` (matches the repo's convention of only tracking `.sample` hooks under `theme-set.d/`). The generated `~/.omp/agent/themes/omarchy.json` is derived state and is NOT tracked (changes on every theme switch).
+The generated `~/.omp/agent/themes/omarchy.json` is derived state and is NOT tracked (changes on every theme switch).
 
 ## omp theme JSON: color token mapping from Omarchy palette
 
