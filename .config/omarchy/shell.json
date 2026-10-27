@@ -14,11 +14,15 @@
       ],
       "centerBegin": [
         {
-          "id": "wils.indicators"
+          "id": "omarchy.indicators"
         }
       ],
       "centerEnd": [
         {
+          "here": {
+            "name": "Dallas",
+            "zone": "America/Chicago"
+          },
           "id": "omarchy.elsewhen",
           "zones": "Dallas|America/Chicago, London|Europe/London, Singapore|Asia/Singapore, Tokyo|Asia/Tokyo, Honolulu|Pacific/Honolulu"
         },
@@ -43,9 +47,6 @@
           "id": "omarchy.tray"
         },
         {
-          "id": "omarchy.network"
-        },
-        {
           "fingerprintUnlock": true,
           "id": "io.github.elevate08.qs-bitwarden-cli",
           "twoFactorMethods": {
@@ -63,6 +64,9 @@
           "id": "omarchy.agents"
         },
         {
+          "id": "omarchy.network"
+        },
+        {
           "id": "omarchy.bluetooth"
         },
         {
@@ -78,6 +82,9 @@
       "tray": [
         {
           "id": "omarchy.keyboard-layout"
+        },
+        {
+          "id": "daniel-marr.omafilee"
         }
       ]
     },

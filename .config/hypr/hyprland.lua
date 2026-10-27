@@ -28,6 +28,7 @@ require("default.hypr.toggles")
 -- Add any other personal Hyprland configuration below.
 -- o.window("qemu", { workspace = "5" })
 o.window("^(discord)$", { opacity = "0.85 0.85" })
+require("hypr.apps.background")
 require("hypr.apps.pulsemeeter")
 require("hypr.apps.cider")
 require("hypr.apps.tern")
