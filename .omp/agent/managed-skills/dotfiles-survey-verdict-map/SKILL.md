@@ -18,7 +18,7 @@ scout sweeps on 2026-08-28, 2026-09-05 and 2026-10-26.
   hyprsunset.conf, looknfeel.lua, monitors.lua, xdph.conf), NOT omarchy-store symlinks.
   Plus `apps/tern.lua` (2026-10).
 - `.config/omarchy/plugins/wils.*` — `wils.notifications`, `wils.gallium-cheatsheet`,
-  `wils.indicators`, `wils.audio` (needs `WATERMARKS_REMOVER_DISABLE=1` if Nerd Font glyphs trip it).
+  `wils.indicators`, `wils.audio`.
 - `.config/omarchy/hooks/theme-set.d/{omarchy,20-zen,30-cider}-theme-sync.sh`, `10-owe-sync`.
 - `.config/autostart/org.fcitx.Fcitx5.desktop` + `limine-snapper-notify.desktop`
   (+ `com.abdownloadmanager.desktop`, `jetbrains-toolbox.desktop`).
