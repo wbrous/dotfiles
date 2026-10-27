@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# git-resign-own <upstream-ref>      sign own unsigned commits in <upstream-ref>..HEAD
+# git-resign-own --new-branch        same, but "unpushed" = reachable from HEAD and no remote ref
+#
+# GPG-sign the UNPUSHED, UNSIGNED commits in the chosen range that were
+# authored by the configured git identity (`git config user.email`). Commits by
+# anyone else are replayed byte-identical in content and left UNSIGNED: the
+# rebase still gives descendants new SHAs (unavoidable — parent SHAs changed),
+# but your GPG key is never put on their commits.
+#
+# Contract
+#   precondition:  inside a git work tree; user.email is configured;
+#                  <upstream-ref> (if given) is an ancestor of HEAD.
+#   postcondition: exit 0 and every unpushed commit authored by user.email is
+#                  signed (or there was nothing to sign). Commits authored by
+#                  others keep their content, author, and unsigned state.
+#   exit 1:        rebase failed (repo left as git left it).
+set -u
+
+arg="${1:?usage: git-resign-own <upstream-ref> | --new-branch}"
+
+email="$(git config user.email)"
+if [ -z "$email" ]; then
+  echo "git-resign-own: ERROR — git config user.email is not set; cannot tell which commits are ours." >&2
+  exit 1
+fi
+
+# Unpushed commits, oldest first, as "<sha> <author-email>". Captured into a
+# variable first (not `mapfile < <(...)`) so a bad ref fails loudly instead of
+# silently yielding an empty list.
+if [ "$arg" = "--new-branch" ]; then
+  log_out="$(git log --reverse --format='%H %ae' HEAD --not --remotes)" || exit 1
+else
+  log_out="$(git log --reverse --format='%H %ae' "$arg"..HEAD)" || exit 1
+fi
+rows=()
+[ -n "$log_out" ] && mapfile -t rows <<<"$log_out"
+
+own_unsigned=()          # SHAs we need to sign, oldest first
+first_idx=-1             # index in rows of the oldest commit we need to sign
+for i in "${!rows[@]}"; do
+  sha="${rows[$i]%% *}"
+  author="${rows[$i]#* }"
+  [ "$author" = "$email" ] || continue
+  # Unsigned iff the commit object has no gpgsig header. (%G? reports E for
+  # signed commits whose key is not in the keyring, so it cannot be used.)
+  git cat-file -p "$sha" | grep -q '^gpgsig' && continue
+  own_unsigned+=("$sha")
+  [ "$first_idx" -lt 0 ] && first_idx=$i
+done
+if [ "${#own_unsigned[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+
+# Sign only our own unsigned commits: the --exec hook checks each replayed
+# commit and amends (-S) just those authored by us that lack a gpgsig header.
+# Everyone else's commits replay untouched and stay unsigned. (--no-gpg-sign
+# defeats commit.gpgsign=true, which would otherwise sign every replayed
+# commit including other authors'.)
+echo "git-push: re-signing ${#own_unsigned[@]} unpushed unsigned commit(s) by $email (one fingerprint scan)..."
+# Replay from just below the oldest commit to sign, not from upstream, so
+# earlier history is untouched. A root commit has no parent: use --root.
+if git rev-parse --verify -q "${own_unsigned[0]}~1" >/dev/null; then
+  rebase_onto=("${own_unsigned[0]}~1")
+else
+  rebase_onto=(--root)
+fi
+exec_cmd="if [ \"\$(git log -1 --format=%ae HEAD)\" = \"$email\" ] && ! git cat-file -p HEAD | grep -q '^gpgsig'; then git commit --amend --no-edit -S; fi"
+if ! git rebase --no-gpg-sign --rebase-merges --exec "$exec_cmd" "${rebase_onto[@]}" 2>&1; then
+  echo "git-resign-own: ERROR — resign rebase failed. Resolve it (or 'git rebase --abort'), then push again." >&2
+  exit 1
+fi
