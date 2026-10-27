@@ -67,7 +67,54 @@ else
   rebase_onto=(--root)
 fi
 exec_cmd="if [ \"\$(git log -1 --format=%ae HEAD)\" = \"$email\" ] && ! git cat-file -p HEAD | grep -q '^gpgsig'; then git commit --amend --no-edit -S; fi"
-if ! git rebase --no-gpg-sign --rebase-merges --exec "$exec_cmd" "${rebase_onto[@]}" 2>&1; then
-  echo "git-resign-own: ERROR — resign rebase failed. Resolve it (or 'git rebase --abort'), then push again." >&2
+
+# Run the rebase in a throwaway detached worktree, never in the caller's own
+# work tree. For a bare repo whose work tree is $HOME (the dotfiles repo), an
+# in-place rebase checks out every intermediate commit INTO $HOME: files that
+# only exist at later commits are deleted mid-rebase (including ~/.local/bin/
+# pinentry-fprintd, which makes gpg fail with "No pinentry"), and stale versions
+# of live config (global git hooks, omp extensions) are resurrected. A separate
+# worktree sees those checkouts instead, so the live tree is never touched.
+git_dir="$(git rev-parse --absolute-git-dir)" || exit 1
+branch="$(git symbolic-ref -q --short HEAD)" || {
+  echo "git-resign-own: ERROR — HEAD is detached; refusing to move a branch." >&2
+  exit 1
+}
+orig_tip="$(git rev-parse HEAD)"
+wt="$(mktemp -d "${TMPDIR:-/tmp}/git-resign-own.XXXXXX")" || exit 1
+cleanup() { git --git-dir="$git_dir" worktree remove --force "$wt" >/dev/null 2>&1; rm -rf "$wt"; }
+trap cleanup EXIT
+
+# Override any inherited GIT_DIR/GIT_WORK_TREE so every command below is bound
+# to the temp worktree and cannot reach the caller's work tree.
+if ! git --git-dir="$git_dir" worktree add -q --detach "$wt" "$orig_tip"; then
+  echo "git-resign-own: ERROR — could not create temp worktree." >&2
+  exit 1
+fi
+if ! (
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+  cd "$wt" && git rebase --no-gpg-sign --rebase-merges --exec "$exec_cmd" "${rebase_onto[@]}" 2>&1
+); then
+  echo "git-resign-own: ERROR — resign rebase failed in temp worktree $wt; your branch and work tree were NOT modified." >&2
+  exit 1
+fi
+
+# Read HEAD from inside the worktree. Passing --git-dir would resolve HEAD
+# against the main repo (the branch we started on), not the worktree's own
+# detached HEAD, and silently return the unsigned original tip.
+new_tip="$(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; cd "$wt" && git rev-parse HEAD)" || exit 1
+if [ "$new_tip" = "$orig_tip" ]; then
+  echo "git-resign-own: ERROR — rebase finished but the tip did not change; nothing was signed." >&2
+  exit 1
+fi
+# The rewritten history must have identical content to what we started with.
+if [ "$(git --git-dir="$git_dir" rev-parse "$new_tip^{tree}")" != "$(git --git-dir="$git_dir" rev-parse "$orig_tip^{tree}")" ]; then
+  echo "git-resign-own: ERROR — resigned tip has a different tree than the original; refusing to move $branch." >&2
+  exit 1
+fi
+# Advance the branch only if it still points where we started (a concurrent
+# commit, e.g. the managed-skill autosync, must not be silently overwritten).
+if ! git --git-dir="$git_dir" update-ref "refs/heads/$branch" "$new_tip" "$orig_tip"; then
+  echo "git-resign-own: ERROR — $branch moved while resigning; nothing changed. Push again." >&2
   exit 1
 fi
