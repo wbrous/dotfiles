@@ -21,7 +21,7 @@ fatal: failed to write commit object
 1. Do NOT run `git commit` in a plain/bash background tool when signing is needed. It will look hung; it is waiting for a human.
 2. Run the commit through **hub start in a real PTY** so the flow is observable, then explicitly tell the user to **touch the fingerprint sensor**:
    ```
-   hub start name=commit ... bash -c "cd /repo && WATERMARKS_REMOVER_DISABLE=1 git commit ..."
+   hub start name=commit ... bash -c "cd /repo && git commit ..."
    hub wait name=commit (timeout 60-90s)
    ```
    The user touches the sensor; gpg-agent signs; commit lands. If the touch never comes, gpg fails after ~2 min (exit 128) — retry, don't assume corruption.
@@ -37,4 +37,3 @@ fatal: failed to write commit object
 ## Local vs global state
 
 - `commit.gpgsign=true` is usually global (every repo); a repo may opt out locally (`git config commit.gpgsign false`) but that defeats the security intent — prefer the PTY + touch flow.
-- The watermarks-remover pre-commit hook (see dotfiles-bare-repo-gitleaks-hook) also wraps commits; if it hangs or blocks on flagged files it can be skipped once via `WATERMARKS_REMOVER_DISABLE=1`, but that bypass is separate from the GPG/fingerprint issue.

@@ -19,8 +19,7 @@ by full scout sweeps on 2026-08-28 and 2026-09-05.
   configs, NOT omarchy-store symlinks. Secret-scan clean (false positives only:
   `token` in xdph allow_token_by_default, `Password` bind labels).
 - `.config/omarchy/plugins/wils.*` — `wils.notifications`, `wils.gallium-cheatsheet`,
-  `wils.indicators` (8 files), and `wils.audio` (3 files, requires
-  `WATERMARKS_REMOVER_DISABLE=1` if Nerd Font unicode glyphs trigger watermarks-remover).
+  `wils.indicators` (8 files), and `wils.audio` (3 files).
 - `.config/omarchy/hooks/theme-set.d/{omarchy,20-zen,30-cider}-theme-sync.sh` — real executable
   scripts (not symlinks); the omp extension calls `omarchy-theme-sync.sh` at this path.
 - `.config/autostart/org.fcitx.Fcitx5.desktop` + `limine-snapper-notify.desktop` — user-created
@@ -107,5 +106,4 @@ by full scout sweeps on 2026-08-28 and 2026-09-05.
    against this map and regex patterns.
 4. Re-verify DEF ADDs against `/tmp/trk` before staging (skip already-tracked);
    commit one logical group or one path at a time, never `add -A`. Gitleaks hook runs
-   per commit. Use `WATERMARKS_REMOVER_DISABLE=1` if custom Unicode Nerd Font glyphs in
-   clean source files trip the watermark checker.
+   per commit.
