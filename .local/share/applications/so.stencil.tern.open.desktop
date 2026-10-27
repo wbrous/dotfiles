@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tern
+Exec="/home/wils/.local/opt/tern/tern" --open-file %f
+MimeType=text/plain;text/markdown;text/x-source;image/png;image/jpeg;image/gif;image/webp;image/svg+xml;application/vnd.sqlite3;application/x-sqlite3;application/x-sqbpro;application/x-ipynb+json;inode/directory;
+Icon=so.stencil.tern
+StartupWMClass=so.stencil.tern
+NoDisplay=true
+Terminal=false
