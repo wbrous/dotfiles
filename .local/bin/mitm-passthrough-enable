@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Enable transparent mitmproxy egress capture for the libvirt analysis VM.
+#
+# Starts mitmweb in transparent mode and adds an nftables nat-prerouting
+# redirect sending guest tcp/80,443 traffic (from virbr0) to mitmweb's
+# listener. See skill: libvirt-vm-mitmproxy-egress-capture.
+set -euo pipefail
+
+BRIDGE="${MITM_BRIDGE:-virbr0}"
+LISTEN_PORT="${MITM_LISTEN_PORT:-8080}"
+WEB_PORT="${MITM_WEB_PORT:-8081}"
+STATE_DIR="$HOME/.local/state/mitm-passthrough"
+PID_FILE="$STATE_DIR/mitmweb.pid"
+FLOWS_DIR="$STATE_DIR/mitm-$(date +%Y%m%d-%H%M%S)"
+
+if sudo -n nft list table ip mitm_egress >/dev/null 2>&1; then
+	echo "mitm-passthrough: nftables redirect already active." >&2
+	exit 1
+fi
+
+if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+	echo "mitm-passthrough: mitmweb already running (pid $(cat "$PID_FILE"))." >&2
+	exit 1
+fi
+
+command -v mitmweb >/dev/null 2>&1 || {
+	echo "mitm-passthrough: mitmweb not found (pacman -S mitmproxy)." >&2
+	exit 1
+}
+
+mkdir -p "$FLOWS_DIR"
+
+nohup mitmweb \
+	--mode transparent \
+	--listen-host 0.0.0.0 --listen-port "$LISTEN_PORT" \
+	--web-host 127.0.0.1 --web-port "$WEB_PORT" \
+	--set web_open_browser=false --set block_global=false \
+	--save-stream-file "$FLOWS_DIR/flows.mitm" \
+	>"$STATE_DIR/mitmweb.log" 2>&1 &
+MITM_PID=$!
+echo "$MITM_PID" >"$PID_FILE"
+
+# Give mitmweb a moment to bind before redirecting traffic to it.
+sleep 1
+if ! kill -0 "$MITM_PID" 2>/dev/null; then
+	echo "mitm-passthrough: mitmweb failed to start; see $STATE_DIR/mitmweb.log" >&2
+	rm -f "$PID_FILE"
+	exit 1
+fi
+
+sudo nft add table ip mitm_egress
+sudo nft add chain ip mitm_egress prerouting '{ type nat hook prerouting priority 0; }'
+sudo nft add rule ip mitm_egress prerouting iif "$BRIDGE" tcp dport { 80, 443 } redirect to :"$LISTEN_PORT"
+
+echo "mitm-passthrough: enabled. web UI: http://127.0.0.1:$WEB_PORT  flows: $FLOWS_DIR/flows.mitm"
