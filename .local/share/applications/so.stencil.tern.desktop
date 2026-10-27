@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tern
+Exec="/home/wils/.local/opt/tern/tern"
+Icon=so.stencil.tern
+StartupWMClass=so.stencil.tern
+Terminal=false
+Categories=System;TerminalEmulator;
+X-TerminalArgExec=-e
