@@ -6,7 +6,7 @@
  * result as omp's theme.<mode> setting) lives in a shared script also
  * installed as Omarchy's `theme-set` hook, so switching themes mid-session
  * (outside omp) and starting omp both regenerate the same file:
- *   ~/.omp/omarchy-theme-sync.sh
+ *   ~/.config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh
  *
  * @precondition Omarchy is installed and has an active theme under
  *   ~/.local/state/omarchy/current/theme/colors.toml.
@@ -20,7 +20,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
- const SYNC_SCRIPT = join(homedir(), ".omp/omarchy-theme-sync.sh");
+const SYNC_SCRIPT = join(homedir(), ".config/omarchy/hooks/theme-set.d/omarchy-theme-sync.sh");
 
 function syncOmarchyTheme(): boolean {
   if (!existsSync(SYNC_SCRIPT)) return false;
