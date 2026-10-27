@@ -9,8 +9,8 @@ Make Zen Browser's spaces (workspaces) and light/dark mode follow the active Oma
 
 ## Layout
 
-- Canonical script: `~/.omp/zen-omarchy-theme-sync.sh` (tracked in dotfiles next to `omarchy-theme-sync.sh`). Do NOT keep it under `~/.config/zen/` — that is the browser's profile dir (cookies, sessions) and is not tracked.
-- Hook: symlink `~/.config/omarchy/hooks/theme-set.d/20-zen-theme-sync.sh -> ~/.omp/zen-omarchy-theme-sync.sh`. Machine-specific, untracked; recreate with `ln -sf`.
+- Script: `~/.config/omarchy/hooks/theme-set.d/20-zen-theme-sync.sh`, a real file tracked in dotfiles (mode 100755) and run by Omarchy directly. No symlink, no copy under `~/.omp/` (that dir is runtime data). Do NOT put it under `~/.config/zen/`: that is the browser's profile dir (cookies, sessions) and is not tracked.
+- Sibling hooks in the same dir: `omarchy-theme-sync.sh` (omp) and `30-cider-theme-sync.sh`. Fresh machine: check out dotfiles; nothing to link. If `+x` is lost (the watermarks-remover pre-commit can strip it and leave `.bak` files), `chmod +x` it, because Omarchy skips a non-executable hook.
 - Palette: `~/.local/state/omarchy/current/theme/colors.toml`. Override with `ZEN_SYNC_COLORS_FILE=<path>` to test any other theme's palette without switching your real one. The hook IGNORES its `$1` theme-name argument and always reads the current palette, so passing a theme name in a test does nothing.
 
 ## Palette resolution: use `omarchy-theme-color`, never parse colors.toml yourself
