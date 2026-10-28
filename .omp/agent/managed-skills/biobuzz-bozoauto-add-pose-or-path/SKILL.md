@@ -11,6 +11,10 @@ Procedure for each new pose:
 3. BozoAuto: add Path field, build in buildPaths() (`curve(start, control, end).linear(start, end)`; control heading is ignored), add State enum entries, add switch cases in autoUpdate(), call `follower.follow(path)` + `setState(...)` at the transition.
 4. Tipped-hive branch lives in `TRAVEL_TO_SHOOT` (limelight botpose tag count vs Tunables.tagThreshold); untipped = UNTIPPED_* states, tipped = TIPPED_* states, both converge on TRAVEL_TO_PARK.
 
+Conventions / user preferences:
+- Tipped (scoring-side) shoot pose = untipped shootPose with same x and y -> 144 - y (mirror over y=72); heading flipped (270<->90). Written as `new Pose(shootPose.x(), 144 - shootPose.y(), heading)` in each alliance class.
+- Pose API in this Pedro version uses `x()`, `y()`, `heading()` — NOT getX()/getY() (compile error).
+
 Verify: `cd <repo> && ./gradlew --offline -q :TeamCode:compileDebugJavaWithJavac` (~6s; the "source value 8 obsolete" warnings are normal).
 
 Gotcha: edit tool rejects multi-line anchors on lines not displayed; just retry the identical edit once after confirming the content matches.
