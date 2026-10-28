@@ -1,4 +1,6 @@
 {
+  "theme": "System",
   "theme_light": "omarchy",
-  "font_size": 16
+  "three_finger_swipes": false,
+  "font_size": 15
 }
