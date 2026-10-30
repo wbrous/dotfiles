@@ -11,7 +11,7 @@
 					100,
 					100
 				],
-				"mute": false,
+				"mute": true,
 				"flags": 0,
 				"external": false,
 				"primary": false,
@@ -41,7 +41,7 @@
 						},
 						"2": {
 							"nick": "Ext Spkrs",
-							"state": true,
+							"state": false,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -105,8 +105,8 @@
 				"device_type": "sink",
 				"device_class": "virtual",
 				"volume": [
-					75,
-					75
+					95,
+					95
 				],
 				"mute": true,
 				"flags": 0,
@@ -138,7 +138,7 @@
 						},
 						"2": {
 							"nick": "Ext Spkrs",
-							"state": true,
+							"state": false,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -202,10 +202,10 @@
 				"device_type": "sink",
 				"device_class": "virtual",
 				"volume": [
-					75,
-					75
+					100,
+					100
 				],
-				"mute": false,
+				"mute": true,
 				"flags": 0,
 				"external": false,
 				"primary": false,
@@ -235,7 +235,7 @@
 						},
 						"2": {
 							"nick": "Ext Spkrs",
-							"state": true,
+							"state": false,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -302,7 +302,7 @@
 					100,
 					100
 				],
-				"mute": false,
+				"mute": true,
 				"flags": 0,
 				"external": false,
 				"primary": false,
@@ -398,7 +398,7 @@
 				"volume": [
 					100
 				],
-				"mute": false,
+				"mute": true,
 				"flags": 0,
 				"external": false,
 				"primary": false,
@@ -426,7 +426,7 @@
 						},
 						"2": {
 							"nick": "Ext Spkrs",
-							"state": true,
+							"state": false,
 							"latency": null,
 							"auto_ports": true,
 							"input_sel_channels": [
@@ -587,8 +587,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					60,
-					60
+					66,
+					66
 				],
 				"mute": true,
 				"flags": 0,

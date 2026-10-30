@@ -19,12 +19,39 @@
       ],
       "centerEnd": [
         {
+          "id": "omarchy.elsewhen",
           "here": {
             "name": "Dallas",
             "zone": "America/Chicago"
           },
-          "id": "omarchy.elsewhen",
-          "zones": "Dallas|America/Chicago, London|Europe/London, Singapore|Asia/Singapore, Tokyo|Asia/Tokyo, Honolulu|Pacific/Honolulu"
+          "cities": [
+            {
+              "name": "Dallas",
+              "zone": "America/Chicago",
+              "people": [
+                "Wils"
+              ]
+            },
+            {
+              "name": "London",
+              "zone": "Europe/London"
+            },
+            {
+              "name": "Singapore",
+              "zone": "Asia/Singapore",
+              "people": [
+                "Hazy"
+              ]
+            },
+            {
+              "name": "Tokyo",
+              "zone": "Asia/Tokyo"
+            },
+            {
+              "name": "Honolulu",
+              "zone": "Pacific/Honolulu"
+            }
+          ]
         },
         {
           "id": "omarchy.weather",

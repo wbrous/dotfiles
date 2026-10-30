@@ -11,6 +11,9 @@ dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/boo
 -- omarchy_preinstalled_bindings = false
 
 -- Load Omarchy defaults.
+-- Your own gestures replace Omarchy's defaults.
+omarchy_default_gestures = false
+
 require("default.hypr.omarchy")
 
 -- Put your personal overrides in these files. They're loaded after Omarchy's
