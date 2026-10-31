@@ -6,21 +6,26 @@ description: "Adding a new pose, bezier control point, or path/state branch to B
 Files (TeamCode/src/main/java/org/firstinspires/ftc/teamcode/auto/): AutoConfig.java, BlueAuto.java, RedAuto.java, BozoAuto.java. BlueCloseAuto/RedCloseAuto are empty subclasses, no change needed.
 
 Procedure for each new pose:
-1. AutoConfig: add public field + constructor param + assignment. Constructor is positional and every param is a `Pose`, so a wrong order compiles silently. Keep fields, params, assignments, and the Blue/Red `buildConfig()` call in the SAME path order (start, shoot, refuel intermediate/refuel, tipped control1/2/shoot, flower control/intermediate/flower, flower2 ..., park control/park). Only BlueAuto/RedAuto call it.
-2. BlueAuto and RedAuto: add `public static Pose X` (@Configurable, tunable in Panels) in the same order and pass it in buildConfig(). Mark untuned values with one group-level `DUMMY coords, replace with tuned values` comment. Red is a mirror of Blue (x -> 144 - x, heading 0<->180, 90<->270). Keep comments minimal: group headings only, no per-line restatements.
+1. AutoConfig: add public field + constructor param + assignment (constructor is positional; only BlueAuto/RedAuto call it). All params are `Pose`, so a wrong order compiles and silently swaps poses: keep field order, constructor order, assignment order, and both `buildConfig()` calls identical, in PATH ORDER (start, shoot, refuel, tipped, flower 1, flower 2, park last).
+2. BlueAuto and RedAuto: add `public static Pose X` (@Configurable, tunable in Panels) and pass it in buildConfig() in the same order. Group poses with a short heading comment; mark untuned groups once with `DUMMY coords, replace with tuned values`. Keep comments sparse (names + AutoConfig javadoc already explain); don't restate per line. Red mirrors Blue: x -> 144 - x, heading 0<->180, 90<->270.
 3. BozoAuto: add Path field, build in buildPaths() (`curve(start, control..., end).linear(start, end)` or `line(a, b).linear(a, b)`; control heading is ignored), add State enum entries, add switch cases in autoUpdate(), call `follower.follow(path)` + `setState(...)` at the transition. Update the class javadoc Sequence.
-4. Tipped-hive branch lives in `TRAVEL_TO_SHOOT` (limelight botpose tag count vs Tunables.tagThreshold); not tipped -> TEMP_FAILED. Tipped sequence now: tipped shoot -> flower1 (curve to flowerIntermediate full speed, then line at FLOWER_APPROACH_SPEED=0.3 via `.with(Constants.foresightConfig.maxPathSpeed.at(x))`) -> collect (Tunables.refuelDurationMillis, timeout Tunables.maxTravelToRefuelTime) -> line back to tippedShootPose -> shoot -> same for flower2 -> shoot 3 -> shutOff() -> curve (parkControlPose) to park. Flywheel/intake stay on between shots; only the last FEED state calls shutOff().
+4. Tipped-hive branch lives in `TRAVEL_TO_SHOOT` (limelight botpose tag count vs Tunables.tagThreshold); untipped = failure (TEMP_FAILED). Tipped sequence: TRAVEL_TO_TIPPED_SHOOT -> SPEED_UP_SECOND_SHOOT -> FEED_SECOND_SHOOT -> flower 1 (TRAVEL_TO_FLOWER_INTERMEDIATE -> TRAVEL_TO_FLOWER -> COLLECT_FLOWER -> TRAVEL_TO_SHOOT_2 -> SPEED_UP_SHOOT_2 -> FEED_SHOOT_2) -> flower 2 (same with _2 / _3 suffixes) -> TRAVEL_TO_PARK -> DONE. All flower shots reuse tippedShootPose. Flywheel keeps spinning between shots; only the last FEED calls shutOff().
 
-Multiple control points: Pedro 3.0 `Paths.curve(Pose...)` is varargs, extra control points go between start and end (cubic bezier with 2).
+Flower leg pattern: shoot pose -> *IntermediatePose at full speed (flower 1 = line, flower 2 = curve with 1 control point), then intermediate -> flower as a line with `.with(Constants.foresightConfig.maxPathSpeed.at(FLOWER_APPROACH_SPEED))` (0.3, constant in BozoAuto, not a Tunable). Collect state reuses Tunables.refuelDurationMillis; travel-into-flower timeout reuses Tunables.maxTravelToRefuelTime.
+
+Multiple control points: Pedro 3.0 `Paths.curve(Pose...)` is varargs, so extra control points just go between start and end (cubic bezier with 2). Tipped path uses tippedControlPose1/tippedControlPose2.
 
 Conventions / user preferences:
-- Tipped (scoring-side) shoot pose = shootPose x, y -> 144 - y; heading flipped (270<->90).
-- Pose API uses `x()`, `y()`, `heading()` — NOT getX()/getY().
-- User wants path-order layout and stale comments removed in AutoConfig/Blue/Red.
+- Tipped (scoring-side) shoot pose = untipped shootPose with same x and y -> 144 - y (mirror over y=72); heading flipped (270<->90).
+- Pose API in this Pedro version uses `x()`, `y()`, `heading()` — NOT getX()/getY().
+- If the user says a leg "doesn't need a control point", convert curve->line and remove the pose from AutoConfig, Blue, Red, BozoAuto, and javadoc (grep to confirm zero leftovers).
 
-Verify: `cd <repo> && JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew -q :TeamCode:compileDebugJavaWithJavac > /tmp/build.log 2>&1; echo $?` (check the real Gradle exit code). No on-robot smoke test is possible here; say so.
-- System default Java may be 27 and breaks the build ("Unsupported class file major version 71"): force JDK 21 via JAVA_HOME.
-- After merging a branch, deps may be bumped and `--offline` fails; rerun without --offline.
-- After merges, "cannot resolve method X in Robot" usually means a rename (e.g. Robot.updateLaunch() -> Robot.update()); grep Robot.java and the TeleOp caller.
+Verify: `cd <repo> && JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew -q :TeamCode:compileDebugJavaWithJavac > /tmp/build.log 2>&1; echo $?` (check the real Gradle exit code, not a grep pipe's).
+- System default Java may be 27, which breaks the build script ("Unsupported class file major version 71"): always force JDK 21 via JAVA_HOME.
+- After merging a branch, deps may be bumped (e.g. com.pedropathing:revhub) and `--offline` fails to resolve; rerun without --offline.
+- After merges, compile errors like "cannot resolve method X in Robot" usually mean the other branch renamed it (e.g. Robot.updateLaunch() -> Robot.update()); grep Robot.java and the TeleOp caller for the new name.
 
-Edit-tool gotchas: anchored ranges must match lines previously displayed; a multi-file `edit` batch aborts at the first rejected file, and PUT ranges must not include the closing brace if your body repeats it. For small files being fully reordered (Blue/Red/AutoConfig), use `write` for the whole file, then re-check tuned numbers are unchanged. When replacing a class-level block, re-read afterwards: an under-wide range leaves a duplicate stale copy.
+Edit-tool gotchas:
+- Anchored ranges must match what was displayed; the batch aborts on the first rejected file, so issue one file per call and retry the identical edit once.
+- PUT n.=m: replaces lines n..m INCLUSIVE: if your replacement body includes the closing brace/`*/`, the range must include it too, otherwise old trailing lines are left duplicated (happened with AutoConfig). Re-read after any multi-block edit.
+- For small files (Blue/Red/AutoConfig) a whole-file `write` is simpler, but preserve the user's tuned numbers and tell them to check the diff.
