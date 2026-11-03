@@ -1,7 +1,23 @@
 ---
 name: omarchy-alt-xkb-layout-panel-plugin
-description: "Use when adding a custom (non-stock) xkb keyboard layout variant to an Omarchy/Hyprland system and/or building an Omarchy Quickshell plugin that shows/hides a draggable overlay window in reaction to the active keyboard layout — e.g. \"pop up a cheat-sheet image when layout X is active\". Covers appending an xkb_symbols variant to /usr/share/X11/xkb/symbols/us (no evdev.xml registration needed — generic rules already resolve layout(variant) directly), verifying it with xkbcli compile-keymap (works headless, unlike setxkbmap which needs X11), detecting the active layout via hyprctl -j devices .active_keymap + Hyprland activelayout/configreloaded IPC events (mirroring the stock KeyboardLayout bar widget's UNTYPED_KEYBOARDS filter), the Hyprland kb_variant cache gotcha (hyprctl reload doesn't recompile the keymap if the config *string* is unchanged — must toggle the value to force it), and dragging a layer-shell overlay card without acceleration bugs."
+description: "Use when adding a custom (non-stock) xkb keyboard layout variant (e.g. Gallium) to Omarchy/Hyprland, when Hyprland shows \"Invalid keyboard layout passed ... variant: ,gallium\" after an update/xkeyboard-config upgrade, or when building an Omarchy Quickshell plugin that shows a draggable overlay in reaction to the active keyboard layout. Covers appending an xkb_symbols variant to /usr/share/X11/xkb/symbols/us, restoring it after a package upgrade wipes it, verifying with xkbcli compile-keymap, detecting the active layout via hyprctl/IPC, the Hyprland kb_variant cache gotcha, and drag-without-acceleration overlays."
 ---
+
+## Recovery: "Invalid keyboard layout passed" after an update (variant wiped)
+
+Symptom: red Hyprland banner `Invalid keyboard layout passed. ( rules: , model: , variant: ,gallium, options: ..., layout: us,us )`. `hyprctl configerrors` is EMPTY (it's a runtime keymap error, not a Lua parse error) — don't conclude "config is clean".
+
+Cause: `/usr/share/X11/xkb/symbols/us` is owned by `xkeyboard-config`; an upgrade (often via `omarchy update`) replaces it and deletes the appended custom `xkb_symbols "gallium"` block. Confirm: `grep -c gallium /usr/share/X11/xkb/symbols/us` → 0, and `pacman -Qi xkeyboard-config | grep "Install Date"` matches the time the banner appeared; `xkbcli compile-keymap --layout us,us --variant ,gallium` errors `Couldn't process include statement for 'us(gallium)'`.
+
+Fix procedure:
+1. Agent shell isn't in the Hyprland session: `export HYPRLAND_INSTANCE_SIGNATURE=$(ls -t /run/user/$(id -u)/hypr/ | head -1)` before `hyprctl`. To SEE the banner, `grim /tmp/screen.png` (with WAYLAND_DISPLAY set) and read it — the banner text is not in `hyprctl configerrors` or the log.
+2. Re-fetch the canonical file: `https://raw.githubusercontent.com/GalileoBlues/Gallium/main/Linux/xkb/gallium_rowstag` (also `_colstag`, `_rowstag_angl`, `_qx` variants). Wils uses ROWSTAG (physical h/j/k/l → y/h/a/e; matches nvim gallium plugin + cheatsheet SVG keymap.svg = Gallium_Rowstag).
+3. Build the block: delete the `default partial` header line, replace `xkb_symbols "basic" {` with `partial alphanumeric_keys\nxkb_symbols "gallium" {`.
+4. Test WITHOUT sudo first: copy `/usr/share/X11/xkb` to /tmp/xkbtest, append block to its `symbols/us`, run `xkbcli compile-keymap --include /tmp/xkbtest --include-defaults --layout us,us --variant ,gallium --options caps:backspace,grp:alts_toggle` (exit 0).
+5. Install with sudo (needs fingerprint → run via bash `pty: true`, see sudo-interactive-tty-via-hub): an idempotent script that skips if `xkb_symbols "gallium"` already present, backs up `us` to `us.bak.<epoch>`, then `cat block >> us`.
+6. Verify: system `xkbcli compile-keymap` exit 0; `hyprctl reload`; `hyprctl configerrors` empty; `hyprctl switchxkblayout at-translated-set-2-keyboard 1` → `active_keymap` = `English (US, Gallium v2 rowstag)`; switch back to 0. Tell user to toggle layout / reload to clear the stale banner.
+
+Recurs on every xkeyboard-config upgrade. Durable alternatives to offer (not yet set up): a pacman hook in /etc/pacman.d/hooks that re-appends the block (PostTransaction, Target = xkeyboard-config), or a user-level layout under ~/.config/xkb/symbols (package can't overwrite).
 
 ## Adding a custom xkb layout variant (e.g. a layout not shipped in stock xkb, like "Gallium")
 
@@ -49,7 +65,7 @@ description: "Use when adding a custom (non-stock) xkb keyboard layout variant t
    us,us --variant ,<name> --options grp:alts_toggle` (from
    `libxkbcommon-tools`) — this is the exact resolution path Hyprland uses.
    Don't bother with `setxkbmap`/`xkbcomp` (X11-only, won't work under
-   Wayland). Check the compiled output's `key <ACnn> { symbols[1]=[...
+   Wayland; setxkbmap under Xwayland prints a misleading success). Check the compiled output's `key <ACnn> { symbols[1]=[...
    qwerty...], symbols[2]=[...new-layout...] }` lines to confirm the right
    characters landed on the right physical keys — spot-check specifically
    the keys near row boundaries (`AC10`/`AC11`, `AB07`/`AB08`) since those
