@@ -1,0 +1,589 @@
+/* Remove top bar that no one wanted */
+/* @import url('https://raw.githubusercontent.com/G0d0fninjas/visual-refresh-compact-title-bar/refs/heads/experimental/desktop.css'); */
+
+/* Catppuccin Theme */
+/* @import url("https://catppuccin.github.io/discord/dist/catppuccin-mocha.theme.css"); */
+
+/* Ash (custom) Theme */
+/* @import url("https://raw.githubusercontent.com/wbrous/random-css/refs/heads/main/ash-discord.css"); */
+
+/* Icon Shit */
+@import url("https://raw.githubusercontent.com/KrstlSkll69/vc-snippets/main/IconRecolors.css");
+@import url("https://raw.githubusercontent.com/KrstlSkll69/vc-snippets/main/OtherStuff/better-foward-icon.css");
+
+@import url('https://gist.githubusercontent.com/keircn/ac2ffd9b9cc5d609188f0a1cc29afe08/raw/b2e82c940b7fa0667af973e871970a886808ea99/emoji-override.css');
+body {app-region: no-drag;}
+
+body {
+  --username-vertical-padding: 0px;
+  --username-horizontal-padding: 3px;
+  --username-border-radius: 5px;
+  --username-plugin-suffix: "| @";
+}
+.username_c19a55 {
+  padding: var(--username-vertical-padding) var(--username-horizontal-padding);
+  border-radius: var(--username-border-radius);
+}
+.username_c19a55 {
+  background: color-mix(in srgb, currentColor 5%, transparent);
+  &:hover {
+    text-decoration: none !important;
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+}
+
+/* Bye avatar decorations */
+.avatarDecorationContainer__44b0c {
+  display: none !important;
+}
+.avatarDecoration_c19a55 {
+  display: none !important;
+}
+.premiumIcon__5d473 {
+  display: none !important;
+}
+.roleIcon_ee71ee {
+  display: none !important;
+}
+.nameContainer__703b9 {
+  color: #4d4d4d !important;
+}
+.vc-typing-user {
+  color: #4d4d4d !important;
+}
+.smyn-name {
+  color: #4d4d4d !important;
+  text-decoration-color: #4d4d4d !important;
+  -webkit-text-fill-color: #4d4d4d !important;
+}
+.smyn-container {
+  color: #4d4d4d !important;
+  text-decoration-color: #4d4d4d !important;
+  -webkit-text-fill-color: #4d4d4d !important;
+}
+
+/* Hide Nitro-only Feature */
+.clickable__81391[aria-label="Bookmarks"] {
+  display: none !important;
+}
+
+/* Hide avatar backgrounds & stuff */
+.container_df39b2 {
+    display: none;
+}
+.subText__91a9d {
+    display: none;
+}
+
+/* Hide Back + Forward buttons in top of client */
+.backForwardButtons__63abb {
+    display: none;
+}
+
+/* Hide app launcher in #chatrooms */
+/* .app-launcher-entrypoint {
+    display: none;
+} */
+
+/* Remove close window button (Hyprland users) */
+.winButton_c38106 {
+    display: none !important;
+}
+
+/* Remove extra room in header */
+.visual-refresh {
+    /* Reserve room for inbox + bug + devtools + bookmark */
+    --vr-header-snippet-space: 130px !important;
+
+    /* Hide native window buttons only */
+    --vr-header-snippet-winbuttons: none !important;
+
+    /* Keep these at 0 unless custom buttons are detected */
+    --update-padding: 0px !important;
+    --vencord-padding: 0px !important;
+    --checkpoint-padding: 0px !important;
+    --experiments-padding: 0px !important;
+}
+
+/* Remove the bug report button */
+.trailing_c38106 
+.clickable__81391[aria-label="Submit a Bug Report"] {
+    display: none !important;
+}
+
+/* Tighten spacing between remaining buttons */
+.trailing_c38106 {
+    gap: 0px !important; /* adjust: 4–8px feels best */
+    padding-right: 4px !important;
+}
+
+/* Normalize button size so spacing looks consistent */
+.trailing_c38106 .clickable__81391 {
+    margin: 0 !important;
+    padding: 4px !important;
+}
+
+/* Hide Activity in servers */
+[class*='membersGroup']:has([role=button]),
+[class*='member'] 
+[class*='container']:has([class*='badges']) {
+    display: none;
+}
+
+/* ################################ */
+/* Coloured Icons for Message Hover */
+/* ################################ */
+
+[aria-label="Copy Message ID"] .icon_f84418 { color: #dd8b42; }
+/* [aria-label="Copy Link"] .icon_f84418 { color: #3498DB; } */
+/* [aria-label="Mark Unread"] .icon_f84418 { color: #1ABC9C; } */
+/* [aria-label="Pin Message"] .icon_f84418 { color: #d175bd; } */
+/* [aria-label="Create Thread"] .icon_f84418 { color: #9B59B6; } */
+/* [aria-label="Hide Media"] .icon_f84418 { color: #e5292c; } */
+/* [aria-label="Translate"] .icon_f84418 { color: #e5292c; } */
+/* [aria-label="Jump to Reply"] .vc-trans-icon { display: none; } */
+[aria-label="Add Reaction"] .icon_f84418 { color: #FCC145; }
+[aria-label="Reply"] .icon_f84418 { color: #34A853; }
+/* [aria-label="Edit"] .icon_f84418 { color: #4285F4; } */
+[aria-label="Forward"] .icon_f84418 { color: #4285F4; }
+/* [aria-label="Delete"] .icon_f84418 { color: #e8474a; } */
+
+/* Copy Link */
+[aria-label="Copy Link"] [d="M16.32 14.72a1 1 0 0 1 0-1.41l2.51-2.51a3.98 3.98 0 0 0-5.62-5.63l-2.52 2.51a1 1 0 0 1-1.41-1.41l2.52-2.52a5.98 5.98 0 0 1 8.45 8.46l-2.52 2.51a1 1 0 0 1-1.41 0ZM7.68 9.29a1 1 0 0 1 0 1.41l-2.52 2.51a3.98 3.98 0 1 0 5.63 5.63l2.51-2.52a1 1 0 0 1 1.42 1.42l-2.52 2.51a5.98 5.98 0 0 1-8.45-8.45l2.51-2.51a1 1 0 0 1 1.42 0Z"] {
+  fill: #e8474a;
+}
+/* Mark Unread */
+[aria-label="Mark Unread"] [d="M18 17h-1.24a3 3 0 1 1 .26 4.25 1 1 0 1 0-1.33 1.5A4.98 4.98 0 0 0 24 19a5 5 0 0 0-8-4 1 1 0 0 0-2 0v3a1 1 0 0 0 1 1h3a1 1 0 1 0 0-2Z"] {
+  fill: #34A853;
+}
+/* Pin */
+[aria-label="Pin Message"] .icon_f84418 { display: none; }
+[aria-label="Pin Message"]::before { /* handle */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%234285F4' d='M19.38 11.38a3 3 0 0 0 4.24 0l.03-.03a.5.5 0 0 0 0-.7L13.35.35a.5.5 0 0 0-.7 0l-.03.03a3 3 0 0 0 0 4.24L13 5l-2.92 2.92-3.65-.34a2 2 0 0 0-1.6.58l-.62.63a1 1 0 0 0 0 1.42l9.58 9.58a1 1 0 0 0 1.42 0l.63-.63a2 2 0 0 0 .58-1.6l-.34-3.64L19 11Z'/%3E%3C/svg%3E");
+}
+[aria-label="Pin Message"]::after { /* point */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.07 17.07a.5.5 0 0 1-.08.77l-5.15 3.43a.5.5 0 0 1-.63-.06l-.42-.42a.5.5 0 0 1-.06-.63L6.16 15a.5.5 0 0 1 .77-.08l2.14 2.14Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.07 17.07a.5.5 0 0 1-.08.77l-5.15 3.43a.5.5 0 0 1-.63-.06l-.42-.42a.5.5 0 0 1-.06-.63L6.16 15a.5.5 0 0 1 .77-.08l2.14 2.14Z'/%3E%3C/svg%3E");
+}
+/* Create Thread */
+[aria-label="Create Thread"] .icon_f84418 { display: none; }
+[aria-label="Create Thread"]::before { /* spool */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.81a1 1 0 0 1 0-1.41l.36-.36a1 1 0 0 1 1.41 0l9.2 9.2a1 1 0 0 1 0 1.4l-.7.7a1 1 0 0 1-1.3.13l-9.54-6.72a1 1 0 0 1-.08-1.58l1-1L12 2.8ZM12 21.2a1 1 0 0 1 0 1.41l-.35.35a1 1 0 0 1-1.41 0l-9.2-9.19a1 1 0 0 1 0-1.41l.7-.7a1 1 0 0 1 1.3-.12l9.54 6.72a1 1 0 0 1 .07 1.58l-1 1 .35.36Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.81a1 1 0 0 1 0-1.41l.36-.36a1 1 0 0 1 1.41 0l9.2 9.2a1 1 0 0 1 0 1.4l-.7.7a1 1 0 0 1-1.3.13l-9.54-6.72a1 1 0 0 1-.08-1.58l1-1L12 2.8ZM12 21.2a1 1 0 0 1 0 1.41l-.35.35a1 1 0 0 1-1.41 0l-9.2-9.19a1 1 0 0 1 0-1.41l.7-.7a1 1 0 0 1 1.3-.12l9.54 6.72a1 1 0 0 1 .07 1.58l-1 1 .35.36Z'/%3E%3C/svg%3E");
+}
+[aria-label="Create Thread"]::after { /* thread */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%23f47aba' d='M15.66 16.8a1 1 0 0 1-1.38.28l-8.49-5.66A1 1 0 1 1 6.9 9.76l8.49 5.65a1 1 0 0 1 .27 1.39ZM17.1 14.25a1 1 0 1 0 1.11-1.66L9.73 6.93a1 1 0 0 0-1.11 1.66l8.49 5.66Z'/%3E%3C/svg%3E");
+}
+/* Hide Media */
+[aria-label="Hide Media"] .vc-image-invisible { display: none; }
+[aria-label="Hide Media"]::before { /* border */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='m21 18.15-2-2V5H7.85l-2-2H19q.825 0 1.413.587Q21 4.175 21 5Zm-3.8 1.85L18.2 21H5q-.825 0-1.413-.587Q3 19.825 3 19V5.8L5 7.825V19h11.175Z'/%3E%3C/svg%3E");
+}
+[aria-label="Hide Media"]::after { /* slash & mountains */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%2334A853' d='m21 18.15M6 17l3-4 2.25 3 .825-1.1L14 17l-4 0Z'/%3E%3Cpath fill='%23e8474a' d='M21 18.15Zm-1.2 4.45L1.4 4.2l1.4-1.4 18.4 18.4Z'/%3E%3C/svg%3E");
+}
+/* Translate */
+[aria-label="Translate"] .vc-trans-icon { display: none; }
+[aria-label="Translate"]::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 96 960 960' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='%234285F4' d='M160 856l-55-55 204-204q-38-44-67.5-88.5T190 416h87q17 33 37.5 62.5T361 539q45-47 75-97.5T487 336H40v-80h280v-80h80v80h280v80H567q-22 69-58.5 135.5T419 598l98 99-30 81-127-122-200 200Z'/%3E%3Cpath fill='%2334A853' d='M475 976l181-480h82l186 480h-87l-41-126H604l-47 126h-82ZM626 780h142l-70-194h-2l-70 194Z'/%3E%3C/svg%3E");
+}
+/* Edit Message */
+[aria-label="Edit"] .icon_f84418 { display: none; }
+[aria-label="Edit"]::before { /* eraser */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: #f47aba;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='m 13.96 5.46 l 4.58 4.58 a 1 1 0 0 0 1.42 0 l 1.38 -1.38 a 2 2 0 0 0 0 -2.82 l -3.18 -3.18 a 2 2 0 0 0 -2.82 0 l -1.38 1.38 a 1 1 0 0 0 0 1.42 Z'/%3E%3C/svg%3E");
+}
+[aria-label="Edit"]::after { /* body */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: #FCC145;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='m 13.96 5.46 Z M 2.11 20.16 l 0.73 -4.22 a 3 3 0 0 1 0.83 -1.61 l 7.87 -7.87 a 1 1 0 0 1 1.42 0 l 4.58 4.58 a 1 1 0 0 1 0 1.42 l -7.87 7.87 a 3 3 0 0 1 -1.6 0.83 l -4.23 0.73 a 1.5 1.5 0 0 1 -1.73 -1.73 Z'/%3E%3C/svg%3E");
+}
+/* Delete Message */
+/* makes it grey bin, comment to undo */
+[aria-label="Delete"] { color: var(--interactive-text-default) !important;}
+[aria-label="Delete"] [d="M14.25 1c.41 0 .75.34.75.75V3h5.25c.41 0 .75.34.75.75v.5c0 .41-.34.75-.75.75H3.75A.75.75 0 0 1 3 4.25v-.5c0-.41.34-.75.75-.75H9V1.75c0-.41.34-.75.75-.75h4.5Z"] {
+  fill: #e8474a;
+}
+/* Restore Animation */
+[aria-label="Pin Message"],
+[aria-label="Create Thread"],
+[aria-label="Hide Media"],
+[aria-label="Translate"],
+[aria-label="Edit"]
+{ transition: transform 0.05s ease-out !important; }
+[aria-label="Pin Message"]:hover,
+[aria-label="Create Thread"]:hover,
+[aria-label="Hide Media"]:hover,
+[aria-label="Translate"]:hover,
+[aria-label="Edit"]:hover
+{ transform: scale(1.1) !important; }
+
+/* ############## */
+/* Coloured Icons */
+/* ############## */
+
+/* ------------- */
+/* MESSAGE HOVER */
+/* ------------- */
+
+[aria-label="Copy Message ID"] .icon_f84418 { color: #dd8b42; }
+/* [aria-label="Copy Link"] .icon_f84418 { color: #3498DB; } */
+/* [aria-label="Mark Unread"] .icon_f84418 { color: #1ABC9C; } */
+/* [aria-label="Pin Message"] .icon_f84418 { color: #d175bd; } */
+/* [aria-label="Create Thread"] .icon_f84418 { color: #9B59B6; } */
+/* [aria-label="Hide Media"] .icon_f84418 { color: #e5292c; } */
+/* [aria-label="Translate"] .icon_f84418 { color: #e5292c; } */
+/* [aria-label="Jump to Reply"] .vc-trans-icon { display: none; } */
+[aria-label="Add Reaction"] .icon_f84418 { color: #E3AC4D; }
+[aria-label="Reply"] .icon_f84418 { color: #34A853; }
+/* [aria-label="Edit"] .icon_f84418 { color: #4285F4; } */
+[aria-label="Forward"] .icon_f84418 { color: #4285F4; }
+/* [aria-label="Delete"] .icon_f84418 { color: #e8474a; } */
+
+/* COPY LINK */
+[aria-label="Copy Link"] [d="M16.32 14.72a1 1 0 0 1 0-1.41l2.51-2.51a3.98 3.98 0 0 0-5.62-5.63l-2.52 2.51a1 1 0 0 1-1.41-1.41l2.52-2.52a5.98 5.98 0 0 1 8.45 8.46l-2.52 2.51a1 1 0 0 1-1.41 0ZM7.68 9.29a1 1 0 0 1 0 1.41l-2.52 2.51a3.98 3.98 0 1 0 5.63 5.63l2.51-2.52a1 1 0 0 1 1.42 1.42l-2.52 2.51a5.98 5.98 0 0 1-8.45-8.45l2.51-2.51a1 1 0 0 1 1.42 0Z"] {
+  color: #e8474a;
+}
+
+/* MARK UNREAD */
+[aria-label="Mark Unread"] [d="M18 17h-1.24a3 3 0 1 1 .26 4.25 1 1 0 1 0-1.33 1.5A4.98 4.98 0 0 0 24 19a5 5 0 0 0-8-4 1 1 0 0 0-2 0v3a1 1 0 0 0 1 1h3a1 1 0 1 0 0-2Z"] {
+  color: #34A853;
+}
+
+/* PIN */
+[aria-label="Pin Message"] .icon_f84418 { display: none; }
+[aria-label="Pin Message"]::before { /* handle */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%234285F4' d='M19.38 11.38a3 3 0 0 0 4.24 0l.03-.03a.5.5 0 0 0 0-.7L13.35.35a.5.5 0 0 0-.7 0l-.03.03a3 3 0 0 0 0 4.24L13 5l-2.92 2.92-3.65-.34a2 2 0 0 0-1.6.58l-.62.63a1 1 0 0 0 0 1.42l9.58 9.58a1 1 0 0 0 1.42 0l.63-.63a2 2 0 0 0 .58-1.6l-.34-3.64L19 11Z'/%3E%3C/svg%3E");
+}
+[aria-label="Pin Message"]::after { /* point */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.07 17.07a.5.5 0 0 1-.08.77l-5.15 3.43a.5.5 0 0 1-.63-.06l-.42-.42a.5.5 0 0 1-.06-.63L6.16 15a.5.5 0 0 1 .77-.08l2.14 2.14Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.07 17.07a.5.5 0 0 1-.08.77l-5.15 3.43a.5.5 0 0 1-.63-.06l-.42-.42a.5.5 0 0 1-.06-.63L6.16 15a.5.5 0 0 1 .77-.08l2.14 2.14Z'/%3E%3C/svg%3E");
+}
+
+/* CREATE THREAD */
+[aria-label="Create Thread"] .icon_f84418 { display: none; }
+[aria-label="Create Thread"]::before { /* spool */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.81a1 1 0 0 1 0-1.41l.36-.36a1 1 0 0 1 1.41 0l9.2 9.2a1 1 0 0 1 0 1.4l-.7.7a1 1 0 0 1-1.3.13l-9.54-6.72a1 1 0 0 1-.08-1.58l1-1L12 2.8ZM12 21.2a1 1 0 0 1 0 1.41l-.35.35a1 1 0 0 1-1.41 0l-9.2-9.19a1 1 0 0 1 0-1.41l.7-.7a1 1 0 0 1 1.3-.12l9.54 6.72a1 1 0 0 1 .07 1.58l-1 1 .35.36Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.81a1 1 0 0 1 0-1.41l.36-.36a1 1 0 0 1 1.41 0l9.2 9.2a1 1 0 0 1 0 1.4l-.7.7a1 1 0 0 1-1.3.13l-9.54-6.72a1 1 0 0 1-.08-1.58l1-1L12 2.8ZM12 21.2a1 1 0 0 1 0 1.41l-.35.35a1 1 0 0 1-1.41 0l-9.2-9.19a1 1 0 0 1 0-1.41l.7-.7a1 1 0 0 1 1.3-.12l9.54 6.72a1 1 0 0 1 .07 1.58l-1 1 .35.36Z'/%3E%3C/svg%3E");
+}
+[aria-label="Create Thread"]::after { /* thread */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%23f47aba' d='M15.66 16.8a1 1 0 0 1-1.38.28l-8.49-5.66A1 1 0 1 1 6.9 9.76l8.49 5.65a1 1 0 0 1 .27 1.39ZM17.1 14.25a1 1 0 1 0 1.11-1.66L9.73 6.93a1 1 0 0 0-1.11 1.66l8.49 5.66Z'/%3E%3C/svg%3E");
+}
+
+/* HIDE MEDIA */
+[aria-label="Hide Media"] .vc-image-invisible { display: none; }
+[aria-label="Hide Media"]::before { /* border */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='m21 18.15-2-2V5H7.85l-2-2H19q.825 0 1.413.587Q21 4.175 21 5Zm-3.8 1.85L18.2 21H5q-.825 0-1.413-.587Q3 19.825 3 19V5.8L5 7.825V19h11.175Z'/%3E%3C/svg%3E");
+}
+[aria-label="Hide Media"]::after { /* slash & mountains */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%2334A853' d='m21 18.15M6 17l3-4 2.25 3 .825-1.1L14 17l-4 0Z'/%3E%3Cpath fill='%23e8474a' d='M21 18.15Zm-1.2 4.45L1.4 4.2l1.4-1.4 18.4 18.4Z'/%3E%3C/svg%3E");
+}
+
+/* TRANSLATE */
+[aria-label="Translate"] .vc-trans-icon { display: none; }
+[aria-label="Translate"]::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 96 960 960' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='%234285F4' d='M160 856l-55-55 204-204q-38-44-67.5-88.5T190 416h87q17 33 37.5 62.5T361 539q45-47 75-97.5T487 336H40v-80h280v-80h80v80h280v80H567q-22 69-58.5 135.5T419 598l98 99-30 81-127-122-200 200Z'/%3E%3Cpath fill='%2334A853' d='M475 976l181-480h82l186 480h-87l-41-126H604l-47 126h-82ZM626 780h142l-70-194h-2l-70 194Z'/%3E%3C/svg%3E");
+}
+
+/* EDIT MESSAGE */
+[aria-label="Edit"] .icon_f84418 { display: none; }
+[aria-label="Edit"]::before { /* eraser */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: #f47aba;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='m 13.96 5.46 l 4.58 4.58 a 1 1 0 0 0 1.42 0 l 1.38 -1.38 a 2 2 0 0 0 0 -2.82 l -3.18 -3.18 a 2 2 0 0 0 -2.82 0 l -1.38 1.38 a 1 1 0 0 0 0 1.42 Z'/%3E%3C/svg%3E");
+}
+[aria-label="Edit"]::after { /* body */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: #E3AC4D;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='m 13.96 5.46 Z M 2.11 20.16 l 0.73 -4.22 a 3 3 0 0 1 0.83 -1.61 l 7.87 -7.87 a 1 1 0 0 1 1.42 0 l 4.58 4.58 a 1 1 0 0 1 0 1.42 l -7.87 7.87 a 3 3 0 0 1 -1.6 0.83 l -4.23 0.73 a 1.5 1.5 0 0 1 -1.73 -1.73 Z'/%3E%3C/svg%3E");
+}
+
+/* DELETE MESSAGE */
+[aria-label="Delete"] { color: #ed5557 !important; }
+[aria-label="Delete"] [d="M14.25 1c.41 0 .75.34.75.75V3h5.25c.41 0 .75.34.75.75v.5c0 .41-.34.75-.75.75H3.75A.75.75 0 0 1 3 4.25v-.5c0-.41.34-.75.75-.75H9V1.75c0-.41.34-.75.75-.75h4.5Z"] {
+  color: var(--interactive-icon-default);
+}
+
+/* ------------- */
+/* LOWER HEADER */
+/* ------------- */
+
+/* [aria-label="Threads"] .icon__9293f { color: #e84393; } */
+/* [aria-label="Notification Settings"] .icon__9293f { color: #e84393; } */
+/* [aria-label="Pinned Messages"] .icon__9293f { color: #e84393; } */
+/* [aria-label="Hide Member List"] .icon__9293f { color: #e84393; } */
+
+/* PINS */
+[aria-label="Pinned Messages"] .icon__9293f,
+[aria-label="Pinned Messages"]:has(.iconBadge__9293f)::after { display: none; } /* new pins */
+[aria-label="Pinned Messages"]::before { /* handle */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%234285F4' d='M19.38 11.38a3 3 0 0 0 4.24 0l.03-.03a.5.5 0 0 0 0-.7L13.35.35a.5.5 0 0 0-.7 0l-.03.03a3 3 0 0 0 0 4.24L13 5l-2.92 2.92-3.65-.34a2 2 0 0 0-1.6.58l-.62.63a1 1 0 0 0 0 1.42l9.58 9.58a1 1 0 0 0 1.42 0l.63-.63a2 2 0 0 0 .58-1.6l-.34-3.64L19 11Z'/%3E%3C/svg%3E");
+}
+[aria-label="Pinned Messages"]::after { /* point */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: var(--icon-muted);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.07 17.07a.5.5 0 0 1-.08.77l-5.15 3.43a.5.5 0 0 1-.63-.06l-.42-.42a.5.5 0 0 1-.06-.63L6.16 15a.5.5 0 0 1 .77-.08l2.14 2.14Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.07 17.07a.5.5 0 0 1-.08.77l-5.15 3.43a.5.5 0 0 1-.63-.06l-.42-.42a.5.5 0 0 1-.06-.63L6.16 15a.5.5 0 0 1 .77-.08l2.14 2.14Z'/%3E%3C/svg%3E");
+}
+[aria-label="Pinned Messages"]:has(.iconBadge__9293f)::before { mask: url(#svg-mask-header-bar-badge-bottom); } /* new pins */
+[aria-label="Pinned Messages"] :is(svg, foreignObject) { display: none !important; }
+
+/* THREADS */
+[aria-label="Threads"] .icon__9293f { display: none; }
+[aria-label="Threads"]::after { /* spool */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: var(--icon-muted);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.81a1 1 0 0 1 0-1.41l.36-.36a1 1 0 0 1 1.41 0l9.2 9.2a1 1 0 0 1 0 1.4l-.7.7a1 1 0 0 1-1.3.13l-9.54-6.72a1 1 0 0 1-.08-1.58l1-1L12 2.8ZM12 21.2a1 1 0 0 1 0 1.41l-.35.35a1 1 0 0 1-1.41 0l-9.2-9.19a1 1 0 0 1 0-1.41l.7-.7a1 1 0 0 1 1.3-.12l9.54 6.72a1 1 0 0 1 .07 1.58l-1 1 .35.36Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.81a1 1 0 0 1 0-1.41l.36-.36a1 1 0 0 1 1.41 0l9.2 9.2a1 1 0 0 1 0 1.4l-.7.7a1 1 0 0 1-1.3.13l-9.54-6.72a1 1 0 0 1-.08-1.58l1-1L12 2.8ZM12 21.2a1 1 0 0 1 0 1.41l-.35.35a1 1 0 0 1-1.41 0l-9.2-9.19a1 1 0 0 1 0-1.41l.7-.7a1 1 0 0 1 1.3-.12l9.54 6.72a1 1 0 0 1 .07 1.58l-1 1 .35.36Z'/%3E%3C/svg%3E");
+}
+[aria-label="Threads"]::before { /* thread */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: #f47aba;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='MM15.66 16.8a1 1 0 0 1-1.38.28l-8.49-5.66A1 1 0 1 1 6.9 9.76l8.49 5.65a1 1 0 0 1 .27 1.39ZM17.1 14.25a1 1 0 1 0 1.11-1.66L9.73 6.93a1 1 0 0 0-1.11 1.66l8.49 5.66Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M15.66 16.8a1 1 0 0 1-1.38.28l-8.49-5.66A1 1 0 1 1 6.9 9.76l8.49 5.65a1 1 0 0 1 .27 1.39ZM17.1 14.25a1 1 0 1 0 1.11-1.66L9.73 6.93a1 1 0 0 0-1.11 1.66l8.49 5.66Z'/%3E%3C/svg%3E");
+}
+
+/* NOTIFICATION SETTINGS */
+[aria-label="Notification Settings"] .icon__9293f { display: none; }
+[aria-label="Notification Settings"]::before { /* shell */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: #E3AC4D;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.7 2.89c.18-.07.32-.24.37-.43a2 2 0 0 1 3.86 0c.05.2.19.36.38.43A7 7 0 0 1 19 9.5v2.09c0 .12.05.24.13.33l1.1 1.22a3 3 0 0 1 .77 2.01v.28c0 .67-.34 1.29-.95 1.56-1.31.6-4 1.51-8.05 1.51-4.05 0-6.74-.91-8.05-1.5-.61-.28-.95-.9-.95-1.57v-.28a3 3 0 0 1 .77-2l1.1-1.23a.5.5 0 0 0 .13-.33V9.5A7 7 0 0 1 9.7 2.89Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.7 2.89c.18-.07.32-.24.37-.43a2 2 0 0 1 3.86 0c.05.2.19.36.38.43A7 7 0 0 1 19 9.5v2.09c0 .12.05.24.13.33l1.1 1.22a3 3 0 0 1 .77 2.01v.28c0 .67-.34 1.29-.95 1.56-1.31.6-4 1.51-8.05 1.51-4.05 0-6.74-.91-8.05-1.5-.61-.28-.95-.9-.95-1.57v-.28a3 3 0 0 1 .77-2l1.1-1.23a.5.5 0 0 0 .13-.33V9.5A7 7 0 0 1 9.7 2.89Z'/%3E%3C/svg%3E");
+}
+[aria-label="Notification Settings"]::after { /* bell */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: var(--icon-muted);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.18 20a.16.16 0 0 0-.18.16 3 3 0 1 0 6 0c0-.1-.09-.17-.18-.16a24.86 24.86 0 0 1-5.64 0Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M9.18 20a.16.16 0 0 0-.18.16 3 3 0 1 0 6 0c0-.1-.09-.17-.18-.16a24.86 24.86 0 0 1-5.64 0Z'/%3E%3C/svg%3E");
+}
+
+/* SHOW/HIDE MEMBER LIST */
+/* [aria-label="Show Member List"] .icon__9293f, */
+/* [aria-label="Hide Member List"] .icon__9293f { display: none; } */
+[aria-label="Show Member List"]::after,
+[aria-label="Hide Member List"]::after { /* front */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: #34A853;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M12.5 9a3 3 0 1 1-6 0a3 3 0 0 1 6 0ZM2 20.5a7.5 7.5 0 0 1 15 0c0 .83-.67 1.5-1.5 1.5a.2 .2 0 0 1-.2-.16c-.2-.96-.56-1.87-.88-2.54c-.1-.23-.42-.15-.42 .1v2.1a.5 .5 0 0 1-.5 .5h-8a.5 .5 0 0 1-.5-.5v-2.1c0-.25-.31-.33-.42-.1c-.32 .67-.67 1.58-.88 2.54a.2 .2 0 0 1-.2 .16A1.5 1.5 0 0 1 2 20.5Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M12.5 9a3 3 0 1 1-6 0a3 3 0 0 1 6 0ZM2 20.5a7.5 7.5 0 0 1 15 0c0 .83-.67 1.5-1.5 1.5a.2 .2 0 0 1-.2-.16c-.2-.96-.56-1.87-.88-2.54c-.1-.23-.42-.15-.42 .1v2.1a.5 .5 0 0 1-.5 .5h-8a.5 .5 0 0 1-.5-.5v-2.1c0-.25-.31-.33-.42-.1c-.32 .67-.67 1.58-.88 2.54a.2 .2 0 0 1-.2 .16A1.5 1.5 0 0 1 2 20.5Z'/%3E%3C/svg%3E");
+}
+[aria-label="Show Member List"]::before,
+[aria-label="Hide Member List"]::before { /* back */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: #4285F4;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M 14.5 8 a 3 3 0 1 0 -2.7 -4.3 c -0.2 0.4 0.06 0.86 0.44 1.12 a 5 5 0 0 1 2.14 3.08 c 0.01 0.06 0.06 0.1 0.12 0.1 Z M 18.44 17.27 c 0.15 0.43 0.54 0.73 1 0.73 h 1.06 c 0.83 0 1.5 -0.67 1.5 -1.5 a 7.5 7.5 0 0 0 -6.5 -7.43 c -0.55 -0.08 -0.99 0.38 -1.1 0.92 c -0.06 0.3 -0.15 0.6 -0.26 0.87 c -0.23 0.58 -0.05 1.3 0.47 1.63 a 9.53 9.53 0 0 1 3.83 4.78 Z Z Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M 14.5 8 a 3 3 0 1 0 -2.7 -4.3 c -0.2 0.4 0.06 0.86 0.44 1.12 a 5 5 0 0 1 2.14 3.08 c 0.01 0.06 0.06 0.1 0.12 0.1 Z M 18.44 17.27 c 0.15 0.43 0.54 0.73 1 0.73 h 1.06 c 0.83 0 1.5 -0.67 1.5 -1.5 a 7.5 7.5 0 0 0 -6.5 -7.43 c -0.55 -0.08 -0.99 0.38 -1.1 0.92 c -0.06 0.3 -0.15 0.6 -0.26 0.87 c -0.23 0.58 -0.05 1.3 0.47 1.63 a 9.53 9.53 0 0 1 3.83 4.78 Z Z Z'/%3E%3C/svg%3E");
+}
+[aria-label="Show Member List"] .icon__9293f,
+[aria-label="Hide Member List"] .icon__9293f { /* indicator */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: var(--icon-muted);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M 22 5 a 2.01 2.01 0 1 1 -1 0 a 2.01 2.01 0 0 1 1 0 Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M 22 5 a 2.01 2.01 0 1 1 -1 0 a 2.01 2.01 0 0 1 1 0 Z'/%3E%3C/svg%3E");
+}
+
+/* ---------------- */
+/* LOWER HEADER DMS */
+/* ---------------- */
+
+/* [aria-label="Start Voice Call"] .icon__9293f { color: #e84393; } */
+[aria-label="Start Video Call"] .icon__9293f { color: #6b3daf; }
+/* [aria-label="Pinned Messages"] .icon__9293f { color: #e84393; } */
+/* [aria-label="Add Friends to DM"] .icon__9293f { color: #e84393; } */
+/* [aria-label="Show User Profile"] .icon__9293f { color: #e84393; } */
+
+/* START VOICE CALL */
+[aria-label="Start Voice Call"] .icon__9293f { display: none; }
+[aria-label="Start Voice Call"]::before { /* phone */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: #34A853;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M 2 7.4 A 5.4 5.4 0 0 1 7.4 2 c 0.36 0 0.7 0.22 0.83 0.55 l 1.93 4.64 a 1 1 0 0 1 -0.43 1.25 L 7 10 a 8.52 8.52 0 0 0 7 7 l 1.12 -2.24 a 1 1 0 0 1 1.19 -0.51 l 5.06 1.56 c 0.38 0.11 0.63 0.46 0.63 0.85 C 22 19.6 19.6 22 16.66 22 h -0.37 C 8.39 22 2 15.6 2 7.71 V 7.4'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M 2 7.4 A 5.4 5.4 0 0 1 7.4 2 c 0.36 0 0.7 0.22 0.83 0.55 l 1.93 4.64 a 1 1 0 0 1 -0.43 1.25 L 7 10 a 8.52 8.52 0 0 0 7 7 l 1.12 -2.24 a 1 1 0 0 1 1.19 -0.51 l 5.06 1.56 c 0.38 0.11 0.63 0.46 0.63 0.85 C 22 19.6 19.6 22 16.66 22 h -0.37 C 8.39 22 2 15.6 2 7.71 V 7.4'/%3E%3C/svg%3E");
+}
+[aria-label="Start Voice Call"]::after { /* waves */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: var(--icon-muted);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M13 7a1 1 0 011-1 4 4 0 014 4 1 1 0 11-2 0 2 2 0 00-2-2 1 1 0 01-1-1ZM13 3a1 1 0 011-1 8 8 0 018 8 1 1 0 11-2 0 6 6 0 00-6-6 1 1 0 01-1-1Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M13 7a1 1 0 011-1 4 4 0 014 4 1 1 0 11-2 0 2 2 0 00-2-2 1 1 0 01-1-1ZM13 3a1 1 0 011-1 8 8 0 018 8 1 1 0 11-2 0 6 6 0 00-6-6 1 1 0 01-1-1Z'/%3E%3C/svg%3E");
+}
+
+/* ADD FRIENDS TO DM */
+[aria-label="Add Friends to DM"]::after { /* front */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: #34A853;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M 0 0 M 15.19 15.61 c 0.13 0.16 0.02 0.39 -0.19 0.39 a 3 3 0 0 0 -1.52 5.59 c 0.2 0.12 0.26 0.41 0.02 0.41 h -8 a 0.5 0.5 0 0 1 -0.5 -0.5 v -2.1 c 0 -0.25 -0.31 -0.33 -0.42 -0.1 c -0.32 0.67 -0.67 1.58 -0.88 2.54 a 0.2 0.2 0 0 1 -0.2 0.16 A 1.5 1.5 0 0 1 2 20.5 a 7.5 7.5 0 0 1 13.19 -4.89 Z M 9.5 12 a 3 3 0 1 0 0 -6 a 3 3 0 0 0 0 6 Z M 15.5 22 Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M 0 0 M 15.19 15.61 c 0.13 0.16 0.02 0.39 -0.19 0.39 a 3 3 0 0 0 -1.52 5.59 c 0.2 0.12 0.26 0.41 0.02 0.41 h -8 a 0.5 0.5 0 0 1 -0.5 -0.5 v -2.1 c 0 -0.25 -0.31 -0.33 -0.42 -0.1 c -0.32 0.67 -0.67 1.58 -0.88 2.54 a 0.2 0.2 0 0 1 -0.2 0.16 A 1.5 1.5 0 0 1 2 20.5 a 7.5 7.5 0 0 1 13.19 -4.89 Z M 9.5 12 a 3 3 0 1 0 0 -6 a 3 3 0 0 0 0 6 Z M 15.5 22 Z'/%3E%3C/svg%3E");
+}
+[aria-label="Add Friends to DM"]::before { /* back */
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: #4285F4;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M14.5 8a3 3 0 10-2.7-4.3c-.2.4.06.86.44 1.12a5 5 0 012.14 3.08c.01.06.06.1.12.1M16.62 13.17c-.22.29-.65.37-.92.14-.34-.3-.7-.57-1.09-.82-.52-.33-.7-1.05-.47-1.63.11-.27.2-.57.26-.87.11-.54.55-1 1.1-.92 1.6.2 3.04.92 4.15 1.98.3.27-.25.95-.65.95a3 3 0 00-2.38 1.17'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M14.5 8a3 3 0 10-2.7-4.3c-.2.4.06.86.44 1.12a5 5 0 012.14 3.08c.01.06.06.1.12.1M16.62 13.17c-.22.29-.65.37-.92.14-.34-.3-.7-.57-1.09-.82-.52-.33-.7-1.05-.47-1.63.11-.27.2-.57.26-.87.11-.54.55-1 1.1-.92 1.6.2 3.04.92 4.15 1.98.3.27-.25.95-.65.95a3 3 0 00-2.38 1.17'/%3E%3C/svg%3E");
+}
+[aria-label="Add Friends to DM"] .icon__9293f { /* indicator */
+  content: '';
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  background-color: var(--icon-muted);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M19 14a1 1 0 0 1 1 1v3h3a1 1 0 0 1 0 2h-3v3a1 1 0 0 1-2 0v-3h-3a1 1 0 1 1 0-2h3v-3a1 1 0 0 1 1-1Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M19 14a1 1 0 0 1 1 1v3h3a1 1 0 0 1 0 2h-3v3a1 1 0 0 1-2 0v-3h-3a1 1 0 1 1 0-2h3v-3a1 1 0 0 1 1-1Z'/%3E%3C/svg%3E");
+}
+
+/* SHOW USER PROFILE */
+[aria-label="Show User Profile"] .icon__9293f path:first-child { color: #E3AC4D; }
+[aria-label="Hide User Profile"] .icon__9293f path:first-child { color: #E3AC4D; }
+[aria-label="Show User Profile (Unavailable)"] .icon__9293f path:first-child { color: #E3AC4D; }
+
+/* Animation + Color Fix for Message Hover */
+[aria-label="Pin Message"],
+[aria-label="Create Thread"],
+[aria-label="Hide Media"],
+[aria-label="Translate"],
+[aria-label="Edit"]
+{ transition: transform 0.05s ease-out !important; color: var(--interactive-icon-default); }
+[aria-label="Pin Message"]:hover,
+[aria-label="Create Thread"]:hover,
+[aria-label="Hide Media"]:hover,
+[aria-label="Translate"]:hover,
+[aria-label="Edit"]:hover
+{ transform: scale(1.1) !important; color: var(--interactive-icon-hover); }
+
+/* Color Fix For Lower Header Bar */
+[aria-label="Threads"]:hover::after,
+[aria-label="Notification Settings"]:hover::after,
+[aria-label="Start Voice Call"]:hover::after,
+[aria-label="Show Member List"]:hover .icon__9293f,
+[aria-label="Pinned Messages"]:hover::after
+{ background-color: var(--icon-subtle); }
+
+[aria-label="Threads"].selected__9293f::after,
+[aria-label="Notification Settings"].selected__9293f::after,
+[aria-label="Pinned Messages"].selected__9293f::after,
+[aria-label="Hide Member List"].selected__9293f .icon__9293f
+{ background-color: var(--icon-strong); }
+
+/* REVERT VENCORD IDLE PLATFORM INDICATOR COLOR CHANGE */
+/* vesktop */
+.vc-platform-indicator svg[fill="#ffc04e"],
+/* browser */
+.vc-platform-indicator img[src*='fill%3D%22%23ffc04e%22'],
+/* browser2 */
+.anchor_edefb8 img[src*='fill%3D%22%23ffc04e%22'],
+/* equibop */
+.pointerEvents__44b0c[fill="#ffc04e"],
+/* profile bottom left */
+rect[fill="#ffc04e"],
+/* status picker on botleft profile popout */
+foreignObject[mask="url(#svg-mask-status-idle)"] .status_a423bd
+{ filter:
+  brightness(0)
+  saturate(100%)
+  invert(58%)
+  sepia(67%)
+  saturate(336%)
+  hue-rotate(354deg)
+  brightness(94%)
+  contrast(88%); }
+
