@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# commit [omp-commit flags...]      `omp commit`, then run the git hooks it skips
+#
+# `omp commit` writes the commit with `git commit-tree`, which bypasses every
+# git hook — so the global prepare-commit-msg hook never adds Signed-off-by /
+# Co-authored-by. This wrapper runs `omp commit` and then amends the new
+# commit with `git commit --amend --no-edit`, which DOES run the hooks. The
+# hook is idempotent (skips trailers already in the message), and the amend
+# re-signs the commit via commit.gpgsign.
+#
+# Contract
+#   precondition:  inside a git work tree; `omp` is on PATH.
+#   postcondition: exit 0 and HEAD is a new commit made by `omp commit` whose
+#                  message went through prepare-commit-msg. With --dry-run (or
+#                  --help) nothing is committed, so nothing is amended.
+#   exit != 0:     `omp commit` failed (no amend attempted), HEAD did not move
+#                  (nothing to commit), or the amend failed (the un-amended
+#                  commit from `omp commit` is still HEAD).
+#
+# Push is left to the caller: `commit --push` is rejected, because pushing
+# before the amend would publish the commit that is about to be rewritten.
+# Use `git push` afterwards (the shell's git function resigns and pushes).
+set -u
+
+for arg in "$@"; do
+  if [ "$arg" = "--push" ]; then
+    echo "commit: ERROR — --push would push before the hooks run; run \`git push\` afterwards." >&2
+    exit 2
+  fi
+done
+
+# `git rev-parse HEAD` fails on an unborn branch; that is "no commit yet", not an error.
+head_before="$(git rev-parse -q --verify HEAD 2>/dev/null || true)"
+
+omp commit "$@" || exit $?
+
+# Flags that make omp print instead of commit: nothing was created, so HEAD
+# must not (and cannot meaningfully) be amended.
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run|--help|-h) exit 0 ;;
+  esac
+done
+
+head_after="$(git rev-parse -q --verify HEAD 2>/dev/null || true)"
+if [ -z "$head_after" ] || [ "$head_after" = "$head_before" ]; then
+  echo "commit: omp commit did not create a new commit; not amending." >&2
+  exit 1
+fi
+
+# env -u OMPCODE: the hook adds Co-authored-by only when OMPCODE=1, which marks
+# an AI agent running `git commit` itself. This is the user's own `commit`
+# command, so it must never get that trailer even when run from inside an omp
+# session (where OMPCODE=1 is inherited). Signed-off-by is not gated on it.
+# GIT_EDITOR=true: --no-edit already skips the editor; this is a belt for
+# commit.verbose=true so a stray editor can never block the amend.
+env -u OMPCODE GIT_EDITOR=true git commit --amend --no-edit --quiet
