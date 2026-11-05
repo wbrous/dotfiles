@@ -488,8 +488,8 @@
 				"device_type": "source",
 				"device_class": "hardware",
 				"volume": [
-					30,
-					30
+					29,
+					29
 				],
 				"mute": false,
 				"flags": 0,
@@ -615,8 +615,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					72,
-					72
+					39,
+					39
 				],
 				"mute": false,
 				"flags": 0,
