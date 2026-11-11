@@ -1,35 +1,34 @@
 ---
 name: flat-lowpoly-flag-wallpaper-python
-description: "Generate 4K flat-shaded low-poly wallpaper (pride flag colors, hard edges, no blend) via Python Pillow+scipy Delaunay; also regenerate it on each Omarchy theme select via a theme-set hook. Skip hand-tracing a reference."
+description: "Generate a 4K+ flat-shaded low-poly pride-flag wallpaper (hard edges, exact antialiasing, sized to the main display) with a Rust binary in under 50 ms, and regenerate it on Omarchy theme select via a theme-set hook. Includes bar-contrast guarantee and mesh-quality rules."
 ---
 
-# Flat low-poly wallpaper from code
+# Flat low-poly flag wallpaper (Rust) + Omarchy theme-set hook
 
-Use when asked to "recreate/make a low-poly wallpaper in 4K, hard lines, no blend", e.g. a pride-flag palette, or to "regenerate the wallpaper each time I pick theme X" on Omarchy.
+Use for "make/regenerate a low-poly pride wallpaper", "faster / lower CPU", "no thin triangles", or "regenerate when I pick theme X" on Omarchy. Live implementation: `~/.local/share/pride-wallpaper/` (Rust source in `rs/`, installed binary `pride-wallpaper`, old Python `generate.py` kept only as the reference).
 
-## Recipe (worked first try on design)
-1. System python on Arch/Omarchy has no PIL/numpy. Use a venv: `uv venv /tmp/bi` (if it exists, `uv pip install --python /tmp/bi/bin/python pillow numpy scipy`). Run with `/tmp/bi/bin/python`. For anything that must survive reboot (hooks!), use a durable venv, e.g. `~/.local/share/<name>/.venv`, never /tmp.
-2. Do NOT hand-trace a reference mesh (vertex lists + Delaunay diverged from the reference edges, cost many iterations). If user says fidelity doesn't matter, or even before, generate instead:
-   - Jittered grid (~9x6 cells at 3840x2160, jitter ~0.38 of a cell; border points stay on the border so the frame tiles exactly).
-   - `scipy.spatial.Delaunay` triangulation.
-   - Each triangle: ONE flat color = flag ramp at centroid y, times (1 +- 0.06) random lightness. No gradients.
-   - Flag ramp for bi: pink (214,2,112) to 0.30, purple (155,79,150) at 0.52, blue (0,56,168) from 0.76. Wide purple band looks better than a thin one.
-   - Draw polygons dilated ~0.75px outward from centroid to avoid hairline gaps.
-3. Verify: `identify` for size, count unique colors (should be ~triangle count, tens), view a downscaled preview.
-4. "A little different each time": derive grid size/jitter/band edges from the seed within tight bounds (8-10 cols, 5-6 rows, jitter .33-.42, bands +-.03), default seed = `secrets.randbits(31)`, `--seed N` for reproducibility. Write PNG to a temp file then `os.replace` (atomic).
+## Current result (measured)
+- 5760x3840 (2x the 2880x1920 panel) in ~25-45 ms wall, ~85-100 ms CPU, 0.77 MB PNG. Python was 6.8 s wall / 12.4 s CPU.
+- Build: `cd rs && cargo build --release && install -m 0755 target/release/pride-wallpaper ../pride-wallpaper` (hook calls the installed copy, so REINSTALL after every rebuild). Deps: png, rayon, serde_json, toml only.
 
-## Omarchy: regenerate on theme select
-- Omarchy runs `~/.config/omarchy/hooks/theme-set.d/*` after every theme change with the slug in `$1` (e.g. `pride`). Hook = no-op unless `$1` matches.
-- Output into `~/.config/omarchy/backgrounds/<slug>/` (picked up automatically, merged with the theme's own `backgrounds/`). NEVER overwrite files inside `~/.config/omarchy/themes/<slug>/` (Aether-managed themes own them).
-- Hook then calls `omarchy theme bg set <file>` (the hook fires AFTER the stock wallpaper was applied, so it crossfades to the new one).
-- Use a NEW filename each time (`generated-$(date +%s%N).png`), never rewrite the file currently on screen; prune old ones but keep the new file and the one that was showing (`readlink -f ~/.local/state/omarchy/current/background`).
-- `flock -n` on a lock file so rapid theme flipping can't stack renders.
-- Test: `OMARCHY_THEME_WAIT=1 omarchy theme set Nord; ... set Pride` (switching to the already-current theme only cycles backgrounds, so switch away first). `OMARCHY_THEME_WAIT=1` makes the call wait for hooks.
+## Design rules the user asked for
+- Hard edges, no blending: exact area-coverage rasterization at output resolution (no supersampling, no dilation). Triangles tile the frame so coverages sum to 1 => no seams.
+- No thin triangles, all facets big and similar: plain jittered grid, 9-12 columns, jitter <= 0.22 of a cell, NO focal clusters. Enforced by tests (min angle >= 20 deg, biggest/smallest area <= 6x, <= 400 triangles at 16:9). Old design had 0.00 deg slivers and 4,000,000x size spread.
+- Size = main display native size x 2 (`--scale`), read from Hyprland's IPC socket (`<XDG_RUNTIME_DIR>/hypr/<sig>/.socket.sock`, send `j/monitors`), NOT a `hyprctl` subprocess (4 ms vs 0.05 ms). Rotated transforms 1/3/5/7 swap w/h. Any failure falls back to 3840x2160. Signature auto-discovered from newest dir when unset (detached hooks).
+- Omarchy top bar must stay light: `omarchy-bar-text-color` flips to the dark colour when the wallpaper's top-strip mean luminance exceeds L* = sqrt((Lt+.05)(Ld+.05))-.05 (0.1547 for Pride colours #b0ebe7 / #14021c). Generator keeps the strip (4.2% of height) under L* x 0.88 by darkening only strip-touching facets with a bisected factor; strip mean is computed analytically from facet colours x exact area in strip (no painting).
+
+## Performance lessons (all measured, do not re-learn)
+- Specialised rasterizer beats general ones (tiny-skia etc.): per row, solid span memset + exact Sutherland-Hodgman coverage only at edge pixels.
+- Render in 16-row bands in parallel with rayon, each band owns a disjoint output slice and a small u16 accumulator (cache resident). A 132 MB full-frame accumulator was the main cost. Deterministic regardless of threads.
+- Threads: 6 is the sweet spot (29 ms vs 25 ms at 24 threads, but 96 ms vs 163 ms CPU). Capped in `configure_threads`.
+- PNG: `png` crate `Compression::Fast` (fdeflate) + `Filter::Sub` is the fastest single-thread option (~9 ms for 22 MP). libdeflate was SLOWER (44 ms at level 1) on this flat data. `fpng-rs` fails to build with GCC 16 (PCLMUL needs -mpclmul). NoFilter = 65 ms / 66 MB. Hand-rolled parallel zlib not worth the corruption risk.
+- Resolve u16->u8 with chunks_exact_mut, not Vec::push.
 
 ## Gotchas
-- NumPy 2.x: `np.cross` on 2D vectors raises; compute `ab[:,0]*ac[:,1]-ab[:,1]*ac[:,0]`.
-- PIL `polygon` fill includes boundary pixels, so raster overlap counts on shared edges are meaningless; check tiling by summing triangle areas == W*H instead.
-- Don't issue `read` of an image in the same parallel batch as the bash that creates it (races, "not found").
-- Probe flatness on a facet interior, not an arbitrary patch (may straddle an edge).
-- Right after `omarchy theme set`, `readlink ~/.local/state/omarchy/current/background` can briefly show the previous wallpaper (shell repoints after the crossfade); wait 1-2s before asserting.
-- A `jq: parse error` line from `omarchy theme set` comes from the stock script's `owe status` call, not from user hooks.
+- `omarchy theme bg set` while on theme A makes the file A's remembered background; the hook only regenerates when PRIDE's remembered/live background is a `zz-generated-*` file. To opt in: switch to Pride, then pick the generated image there.
+- Generated files are named `zz-generated-<ns>.png` so they sort last and never become Pride's default image; hook prunes all but the new one and the one that was showing.
+- Hook detaches via `setsid` and logs to `~/.local/state/omarchy/pride-wallpaper.log`; `flock -n` stops pile-ups.
+- Grid coordinates: force last row/col to exactly width/height (c*(w/cols) can miss w by a rounding error and leave a hairline uncovered). A test caught this.
+- Edit tool: bodyless deletes must use CUT, an empty PUT deletes; re-read after each edit since tags/line numbers shift (several edits clobbered neighbouring code).
+- Tests: raster has a brute-force differential test (fast span path vs per-pixel exact coverage on 4,500 random + sliver triangles); keep it when touching `inner_run`.
+- System python has no PIL; use `~/.local/share/pride-wallpaper/.venv/bin/python` for image inspection. Parallel `read` of an image created by the same batch races.
