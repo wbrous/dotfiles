@@ -40,16 +40,24 @@ git() {
 	fi
 }
 
-# dotfiles: bare-repo alias, reusing the same one-command resign-then-push
-# flow via GIT_DIR/GIT_WORK_TREE so unpushed unsigned commits (managed-skill
-# auto-commits, dotfiles survey commits) get signed and pushed together.
+# dotfiles: bare-repo wrapper around git (GIT_DIR=~/.dotfiles, work tree $HOME).
+#   dotfiles push      resign-then-push in one command (same flow as `git push`)
+#   dotfiles autoadd   stage everything under ~/Docs (see dotfiles-autoadd)
+#   dotfiles <git...>  anything else is plain git against the bare repo
 dotfiles() {
-	if [ "${1:-}" = "push" ]; then
+	case "${1:-}" in
+	push)
 		shift 1
 		GIT_DIR="$HOME/.dotfiles" GIT_WORK_TREE="$HOME" command git-push-resign "$@"
-	else
+		;;
+	autoadd)
+		shift 1
+		command dotfiles-autoadd "$@"
+		;;
+	*)
 		git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"
-	fi
+		;;
+	esac
 }
 
 . "$HOME/.local/share/../bin/env"

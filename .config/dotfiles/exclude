@@ -1,0 +1,77 @@
+# Paths that must never be tracked in the dotfiles bare repo.
+#
+# Wired in with (one-time, lives in ~/.dotfiles/config, not versioned):
+#   git --git-dir=$HOME/.dotfiles config core.excludesFile $HOME/.config/dotfiles/exclude
+#
+# Effect: `dotfiles add <path>` refuses these paths (needs -f), and they never
+# show up as untracked candidates. Already-tracked files are unaffected, so
+# `dotfiles rm --cached` anything here that is still tracked.
+#
+# Standard (see ~/Docs/git/dotfiles.md): a dotfile is config written ON PURPOSE
+# by the user or their agent. Anything a theme, font hook, installer, or app
+# writes by itself is output, not config.
+
+# --- omp is the only coding agent ---------------------------------------
+/.agent/
+/.claude/
+/.cline/
+/.codex/
+/.commandcode/
+/.copilot/
+/.cursor/
+/.factory/
+/.gemini/
+/.grok/
+/.kimi-code/
+/.openclaude/
+/.pi/
+/.config/opencode/
+/.config/devin/
+/.config/manicode/
+/.config/cursor/
+/.omp/agent/opencode-*
+/.omp/agent/extensions/herdr-omp-agent-state.ts
+/.config/systemd/user/opencode-*
+
+# --- written by theme / font hooks --------------------------------------
+/.omp/agent/themes/
+/.config/zed/themes/
+/.config/btop/themes/
+/.config/omarchy/hooks/theme-set
+/.config/omarchy/shell.json
+/.config/omarchy/shell.toml
+
+# --- app-saved state and installer output -------------------------------
+/.omp/agent/last-changelog-version
+/.omp/agent/*.old
+/.omp/agent/*.bak
+/.config/pulsemeeter/
+/.config/Omacom/
+/.config/tern/settings.json
+/.config/strata/
+/.config/obs-studio/
+/.config/xournalpp/
+/.config/Pinta/
+/.config/qalculate/
+/.config/aether/
+/.config/nextjs-nodejs/
+/.config/obsidian/
+/.config/microsoft-edge-dev/
+/.config/mise/config.toml
+/.config/Android Open Source Project/
+/.config/omarchy/themed/
+/.config/omarchy/hooks/**/*.sample
+/.config/omarchy/hooks/*.sample
+
+# --- not config ----------------------------------------------------------
+# Project source belongs in its own repo.
+/Projects/
+# Live-path signing config: tracked copy lives in ~/.local/share/gpg-fingerprint.
+/.gnupg/
+# Editor/backup debris, wherever it appears.
+*.bak
+*.bak[0-9]
+*.swp
+*~
+__pycache__/
+.DS_Store

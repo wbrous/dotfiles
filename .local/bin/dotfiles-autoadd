@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# dotfiles-autoadd: stage everything under ~/Docs in the dotfiles bare repo.
+#
+# Invoked as `dotfiles autoadd` (see the dotfiles() function in ~/.bashrc).
+#
+# Precondition:  $HOME/.dotfiles is a bare git repo and $HOME/Docs exists.
+# Postcondition: every new, modified, deleted, and renamed file under
+#   $HOME/Docs is staged, honouring core.excludesFile (editor/backup debris is
+#   skipped). Nothing outside Docs/ is staged or unstaged: a path the user had
+#   already staged elsewhere stays staged, and nothing new is added there.
+#   Nothing is committed or pushed.
+# Failure:       exits non-zero with a message if the repo or Docs is missing.
+#
+# Why Docs only: Docs is the one tree where "add everything" is correct. The
+# rest of $HOME mixes config with theme output, app state, and secrets, so it is
+# added one reviewed path at a time (see ~/Docs/git/dotfiles.md).
+set -euo pipefail
+
+git_dir="$HOME/.dotfiles"
+docs_dir="$HOME/Docs"
+
+[[ -d $git_dir ]] || { echo "dotfiles-autoadd: no bare repo at $git_dir" >&2; exit 1; }
+[[ -d $docs_dir ]] || { echo "dotfiles-autoadd: no Docs directory at $docs_dir" >&2; exit 1; }
+
+dotfiles_git() { git --git-dir="$git_dir" --work-tree="$HOME" "$@"; }
+
+# -A: also stage deletions and renames. Pathspec is relative to the work tree.
+dotfiles_git add -A -- Docs
+
+staged="$(dotfiles_git diff --cached --name-status -- Docs)"
+if [[ -z $staged ]]; then
+  echo "dotfiles autoadd: Docs/ already up to date, nothing to stage."
+else
+  echo "dotfiles autoadd: staged under Docs/:"
+  printf '%s\n' "$staged" | sed 's/^/  /'
+  echo "Review with: dotfiles diff --cached -- Docs   Commit with: dotfiles commit -m '<message>'"
+fi
