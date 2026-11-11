@@ -168,3 +168,29 @@ This section exists because the only reader of this file who needs it spelled ou
 7. **If you feel like you're forcing something to work, stop immediately.** That feeling is not a puzzle to push through, it's a signal the design is wrong. Step back and redesign the part that's fighting you, don't sand down the resistance until it compiles.
 8. **Never fake completion.** No stubs, no placeholders, no "TODO: implement this," no mocked-out fallback pretending to be the real thing, unless explicitly asked for scaffolding. If you can't finish something for real, say exactly what's missing — don't dress up an incomplete answer as done.
 9. **Always commit when a task is finished; never push unless told to.** When you finish a task, commit your changes before yielding. Do not run `git push` (or any equivalent that publishes commits to a remote) unless the user has explicitly asked you to push in the current conversation. A past instruction to push does not authorize future pushes.
+10. **Persist what you learn as a project skill (inside a repo) or a `~/Docs/` doc (system-wide); never as a global skill.** See the next section.
+
+## Persisting knowledge: project skills vs `~/Docs/`
+
+`autolearn` and `manage_skill` are disabled. Do not create global skills (`~/.omp/agent/managed-skills/`, `~/.omp/agent/skills/`): a skill there loads into every session on this machine, costs context in projects it has nothing to do with, and tends to record a single incident. Decide where a discovery belongs by what it is about:
+
+**1. Specific to one repository → project skill, and nothing else.**
+
+Write `<repo>/.omp/skills/<skill-name>/SKILL.md` with frontmatter `name` and a one-line `description` that says *when* to use it. Use it for a repeatable procedure or recurring trap of that repo (how to run its tests, a build step that must happen in order, a convention a future agent would otherwise break). Commit it with the repo. Prefer updating an existing project skill over adding a near-duplicate; fix a wrong one in place.
+
+Do NOT put repo-specific knowledge in `~/Docs/`, and do not add `docs/` pages or edit `AGENTS.md` for it unless the user asked for that.
+
+**2. System-wide, or not tied to any single folder → `~/Docs/<area>/<topic>.md`.**
+
+Use it for things about the machine and its tooling rather than one project: Omarchy config, Hyprland, Quickshell and Omarchy plugins, audio, GPU, networking, Wine, libvirt, git/GPG/keyring setup, dotfiles, hardware quirks, systemd services, omp itself. Organize by topic area, never by project name: a folder named after a single project (e.g. `smrt/`, `phermata/`) is wrong, since that knowledge is a project skill. `~/Docs/README.md` is the index of area folders; each folder has its own `README.md` listing its docs one line each. Create a new area folder when none fits and add it to the root index. `~/Docs/` is backed up in the dotfiles bare repo: `git --git-dir=$HOME/.dotfiles --work-tree=$HOME add Docs`, commit; never push unless asked.
+
+**Test:** if the fact would still matter after `cd` to a different project, it is system-wide (`~/Docs/`). If it only matters inside this repo, it is a project skill.
+
+**Before work**, `read` `~/Docs/README.md`, then the matching area `README.md` and doc for system-wide topics, and check the repo's `.omp/skills/` for project ones. Do not rediscover what is already written down.
+
+**What to write** (either place):
+
+- Non-obvious facts only: a root cause, the flag that fixed it, a surprising path, a command that must run in a specific order, a decision and its reason.
+- Format: `## <Problem / task>` with **Symptom**, **Cause**, **Fix** (commands in fenced blocks) where they apply. Keep exact commands, paths, flags, and error strings; drop narrative.
+- State preconditions (OS, tool versions, "only when X is installed") so a later reader can tell when it applies.
+- Do not record generic knowledge, things obvious from the code, or one-off events with no reusable fact. If nothing reusable was learned, write nothing.

@@ -1,6 +1,6 @@
 autolearn:
-  autoContinue: true
-  enabled: true
+  autoContinue: false
+  enabled: false
 browser:
   headless: false
 colorBlindMode: false
