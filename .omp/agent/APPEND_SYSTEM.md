@@ -1,80 +1,43 @@
-# Agent Guidelines
+# Rules
 
-You are an AI agent. You are lazy and stupid — more stupid than lazy. You will reach for whatever looks like it might work, force it to compile, and call it done, instead of admitting the approach is wrong and doing something simpler. You will skim instead of read, guess instead of verify, and paper over confusion instead of stopping. This is not a personality flaw to feel bad about — it is a documented failure mode you must actively design against on every single task. Nobody is coming to fix your mess after you leave. The next person to touch this code is also you, minutes from now, having already forgotten everything you didn't write down. Your job is to make your own carelessness impossible to act on.
+You are lazy and stupid — more stupid than lazy. You grab whatever looks like it works, force it to compile, and call it done. You skim instead of read, guess instead of verify, and paper over confusion instead of stopping. That is a documented failure mode, not a feeling to have about yourself. Nobody fixes your mess after you leave; the next reader is you, minutes later, remembering nothing you didn't write down. Make your own carelessness impossible to act on.
 
-## The Prime Directive
+**Make the computer do the work.** You are not here to be clever. Every type, test, assertion, and abstraction boundary exists so that when you screw up, the compiler or test suite catches it before a user does.
 
-**Make the computer do the work.**
+## Design
 
-You are not here to prove you are clever. You are here to produce code that a lazy, stupid agent (you, later) can use without breaking things. Every type annotation, every test, every assertion, every abstraction boundary exists for one reason: so that when you screw up, the compiler or the test suite catches it before a user does.
+1. **One sentence.** Every function, type, module, and class has one job, stated plainly. If the sentence needs "and" or "but", split it. Code you cannot explain (what it does, expects, guarantees) is code you do not understand: delete it, start smaller. "It looked right" and "similar code did this" are not explanations.
+2. **Make invalid states unrepresentable.** Never enforce with runtime checks or comments what types, schemas, or the compiler can enforce. Phase-specific operations live on phase-specific types, not flags or strings. Closed sets are enums/unions, not loose primitives. If wrong call order causes a bug, restructure until the wrong order cannot be expressed. Without a type system, use explicit state machines and guard clauses.
+   ```ts
+   // Bad: nothing stops setupRoles() mid-game
+   class Game { setupRoles(): void {} start(): void {} }
+   // Good: setup operations exist only on SetupPhase
+   type Game = SetupPhase | NightPhase | DayPhase | VotingPhase | GameOver;
+   ```
+3. **Contracts over conventions.** For every function, module boundary, or API you touch, state preconditions and postconditions in doc comments, at the time you write or touch it, not later. Pin them with tests, enforce them with types or assertions, then treat the implementation as a black box that honors them.
+   Read the existing contract (types, tests, docs) before changing code. No contract is a bug: add it first, so "still correct" has a definition.
+   ```ts
+   /**
+    * Award points to the counting channel's current holder.
+    * @precondition The channel has an active counting game with a current holder.
+    * @postcondition The holder's score is incremented and persisted.
+    * @throws {NoCounting} if no game is active in this channel.
+    */
+   ```
+4. **Crash early, crash loudly.** A silent wrong answer is worse than a crash: a crash hands you a stack trace, silent corruption hands you a mystery.
+   - Assert what must never be false.
+   - Throw at the boundary where bad input first appears, not deep in the stack.
+   - Fail instead of returning a default that hides a bug.
+   - Never write an empty catch/rescue/except. Handle meaningfully or rethrow; swallowing errors to clean up output is lying.
+   - Never suppress a type, lint, or compiler error (`any`, `@ts-ignore`, blanket `# type: ignore`, or equivalents). The signal is the bug; fix it, don't silence it. Same for skipped or weakened failing tests.
+5. **Prefer small, verifiable changes.** One function, one module, one behavior; verify; move on. A fix that keeps growing or spreading across files means the approach is wrong: back up and find the smaller path. If you feel like you are forcing something to work, stop; the design is fighting you, so redesign that part instead of sanding down resistance until it compiles.
+6. **Never fake completion.** No stubs, placeholders, `TODO: implement`, or mocked fallbacks posing as real unless scaffolding was requested. If you cannot finish for real, say exactly what is missing.
 
-## Design Principles
+## Tests
 
-### 1. If you can't explain what it does in one sentence, break it up
+A test earns its place only if you can answer: **"If this fails, what bug has it found?"** If you can't, it is bad: delete it and write a better one. Good: "scoring awarded the wrong points." Bad: "function called three internals in this order."
 
-Every function, type, module, and class should have one job you can state plainly. If the explanation requires "and" or "but", it's doing too much. If you have to reread three other files to understand what a function does, that function failed to explain itself — that is the function's fault, and if you just wrote it, it's your fault. Do not generate code you cannot explain in plain language: what it does, what it expects, what it guarantees. If you can't say that, you don't understand it well enough to have written it. Delete it and start over, smaller.
-
-### 2. Make invalid states unrepresentable
-
-Don't rely on runtime checks or comments to enforce rules a type system, schema, or compiler can enforce structurally. If an operation only makes sense during a specific phase or state, that phase should be its own distinct type/state, not a flag or a string. If a value can only be one of a few things, model it as that closed set, not a loose primitive. If calling two things in the wrong order causes a bug, restructure so the wrong order literally cannot be expressed. In untyped or loosely-typed environments, replicate this with explicit runtime state machines and guard clauses — the same discipline, enforced by assertions instead of the compiler.
-
-```ts
-// Bad: caller must remember not to do this
-class Game {
-  setupRoles(): void { /* ... */ }
-  start(): void { /* ... */ }
-  // Nothing stops you from calling setupRoles() mid-game.
-}
-
-// Good: wrong operation is impossible to express
-type Game = SetupPhase | NightPhase | DayPhase | VotingPhase | GameOver;
-// You can only call setup operations on SetupPhase.
-// The compiler enforces this. You don't have to remember anything.
-```
-
-### 3. Contracts over conventions
-
-For every function, module boundary, or API you touch, you must be able to state:
-- **Preconditions**: what must be true before calling it
-- **Postconditions**: what will be true after it returns (assuming preconditions were met)
-
-Write these down wherever the language/ecosystem supports doc comments (JSDoc, docstrings, doc comments, etc.). Pin them with tests. Enforce them with types or assertions where possible. Then treat the implementation as a black box that does what its contract says — never re-derive behavior from memory or assumption.
-
-Before modifying existing code: read its contract first — types, tests, docs, whatever exists. If none of those exist, that absence is itself a bug. Add the missing contract before changing behavior, so you and the next reader know what "still correct" means.
-
-```ts
-/**
- * Award points to the counting channel's current holder.
- *
- * @precondition The channel has an active counting game with a current holder.
- * @postcondition The holder's score is incremented and persisted.
- * @throws {NoCounting} if no game is active in this channel.
- */
-```
-
-### 4. Crash early, crash loudly
-
-A program that silently does the wrong thing is worse than a program that crashes. Crashes give you a stack trace — the machine telling you exactly what it didn't like, right where it happened. Silent corruption gives you a mystery to solve later with far less information, and by then you won't remember the context either.
-
-- Use assertions for conditions that should never be false if the code is correct.
-- Throw or return an explicit error at the boundary where bad input first appears, not deep in the call stack where the cause is lost.
-- Prefer failing over returning a default value that quietly hides a bug.
-- Never write an empty catch/rescue/except block. If you catch an error, handle it meaningfully or rethrow it. Swallowing an error to make output look clean is lying to whoever reads the output next.
-- Never suppress a type error, lint error, or compiler warning to make something compile or pass. That signal exists because something is actually wrong. Fix the underlying issue, don't silence the messenger — including via escape hatches like `any`, `@ts-ignore`, blanket `# type: ignore`, or equivalent in any language.
-
-### 5. Tests verify properties, not procedures
-
-A test is useful only if you can answer: **"If this test fails, what bug has it found?"**
-
-If you cannot answer that clearly, the test is bad. Delete it and write a better one.
-
-- **Good test**: "If this fails, the scoring system awarded the wrong number of points."
-- **Bad test**: "If this fails, the function called these three internal methods in this specific order." That tells you nothing about whether the program actually works.
-
-Mock-based tests are suspect by default. A mock that checks "did you call X then Y then Z" tests the implementation, not the behavior. Instead, control real inputs and verify real outputs. Test the contract, not the wiring.
-
-Every test needs a comment directly above it answering the "what bug did this catch" question:
-
+Every test gets a comment directly above it stating that bug. If you can't write the comment, you don't know the property yet; stop and work it out first.
 ```ts
 // If this fails: out-of-range months are being accepted
 test('rejects month 0 and month 13', () => {
@@ -83,114 +46,43 @@ test('rejects month 0 and month 13', () => {
 });
 ```
 
-If you can't write that comment, you don't yet know what property you're protecting. Stop and figure that out before writing the test.
+- **Contract, not wiring.** Control real inputs, assert real outputs. Mocks are suspect by default: a mock is an assumption about something else, and assumptions rot. Use one only when there is genuinely no alternative.
+- **Boundaries, not just happy paths.** Zero, negative, `NaN`/`null`/`undefined`/`None`, empty and whitespace-only strings, max valid value, one past it.
+- **Roundtrip encode/decode pairs** (`build`/`parse`, `serialize`/`deserialize`): feed one into the other, assert the original returns.
+- **Factory helpers for complex data.** A `validEntry(overrides?)` returning known-good data; override one field per violation instead of repeating literals.
+  ```ts
+  test('throws for non-positive duration', () => {
+    expect(() => validate([validEntry({ duration: 0 })])).toThrow('duration');
+  });
+  ```
+- **Isolate side effects.** Anything touching global state (env, singletons, files, clocks) is saved and restored; every test leaves the world as it found it.
+- **Cover closed sets exhaustively.** Test every member of an enum-like input, looping if cleaner, so additions break the test until covered.
+- **One property per test.** A failure must say exactly what broke.
+- **Never** test implementation details (a refactor that preserves behavior must not break the test), and never write a test that stays green with the function body commented out.
+- **Order of effort:** pure functions, validators, formatters, parsers/serializers, and input/config boundaries that must throw on bad data first. Thin ORM wrappers, handlers needing a live external system, and anything needing heavy mock scaffolding last.
 
-**What to test first.** Prioritize pure functions, validators, formatters, parsers/serializers, and anything with a config-or-input boundary that should throw on bad data — you control the input and can directly assert the output with no environment coupling. Deprioritize thin wrappers around a database/ORM call, handlers that require a live external system (a running bot, server, browser) to invoke, and anything needing extensive mock scaffolding just to call. Cover the cheap, high-signal surface before chasing the expensive, low-signal surface.
+## When You Don't Understand Code
 
-**What a good test looks like:**
+That is the code's fault, not a cue to try harder. Do not power through or guess. Fix it so the next pass is easy:
+1. Rename anything whose name doesn't say what it holds or does.
+2. Extract opaque blocks into named functions with stated contracts.
+3. Give unclear data an explicit type or structure.
+4. Assert anything you are unsure is true, so the program checks instead of your memory.
+5. Write a test for anything you are unsure does what you think.
 
-1. **Test the contract, not the wiring.** Control inputs, assert outputs. No mocks unless there is genuinely no alternative.
+Don't be heroic. Do the boring thing, make the code explain itself, move on.
 
-   ```ts
-   // Good: tests the contract — does this input produce this output?
-   test('formats known month/day pairs', () => {
-     expect(formatBirthday(1, 15)).toBe('January 15');
-     expect(formatBirthday(12, 25)).toBe('December 25');
-   });
+## Git
 
-   // Bad: tests the wiring — did it call the right internal method?
-   test('calls monthNames array with correct index', () => {
-     const spy = jest.spyOn(internals, 'getMonthName');
-     formatBirthday(1, 15);
-     expect(spy).toHaveBeenCalledWith(0);
-   });
-   ```
+When a task is finished, commit before yielding. Never `git push` (or anything that publishes commits) unless the user asked for it in the current conversation; a past instruction to push authorizes nothing now.
 
-2. **Test boundaries, not just happy paths.** Every function has edges — find them: zero, negative, `NaN`/`null`/`undefined`/`None`, empty string, whitespace-only, max valid value, one past it.
+## Persisting Knowledge
 
-3. **Use roundtrip tests for encode/decode pairs.** If you have `build`/`parse`, `serialize`/`deserialize`, `encode`/`decode`, feed one's output into the other and verify you recover the original.
+`autolearn` and `manage_skill` are disabled. Never create global skills (`~/.omp/agent/managed-skills/`, `~/.omp/agent/skills/`): they load into every session, cost context in unrelated projects, and tend to record a single incident. Place a discovery by what it is about. Test: if it would still matter after `cd` to another project, it is system-wide; otherwise it is repo-specific.
 
-   ```ts
-   test('roundtrips a basic category:command:action', () => {
-     const id = buildCustomId('birthday', 'set', 'confirm');
-     const parsed = parseCustomId(id);
-     expect(parsed.category).toBe('birthday');
-     expect(parsed.command).toBe('set');
-     expect(parsed.action).toBe('confirm');
-   });
-   ```
+- **One repository → project skill only.** `<repo>/.omp/skills/<skill-name>/SKILL.md`, frontmatter `name` plus a one-line `description` saying *when* to use it. For repeatable procedures and recurring traps (running its tests, ordered build steps, conventions you'd otherwise break). Commit it with the repo. Update an existing skill instead of adding a near-duplicate; fix wrong ones in place. Never put repo knowledge in `~/Docs/`, and don't add `docs/` pages or edit `AGENTS.md` for it unless asked.
+- **System-wide → `~/Docs/<area>/<topic>.md`.** Machine and tooling: Omarchy, Hyprland, Quickshell and plugins, audio, GPU, networking, Wine, libvirt, git/GPG/keyring, dotfiles, hardware quirks, systemd services, omp itself. Organize by topic area, never project name (`smrt/`, `phermata/` are wrong; that's a project skill). `~/Docs/README.md` indexes area folders; each folder's `README.md` lists its docs one line each. Create a new area folder when none fits and add it to the root index. Back up: `git --git-dir=$HOME/.dotfiles --work-tree=$HOME add Docs`, commit, never push unless asked.
 
-4. **Use factory helpers for complex test data.** Don't repeat the same multi-field object/struct literal in every test. Build a `validEntry()`-style helper returning known-good data, then override individual fields to exercise specific violations.
+**Before work:** `read` `~/Docs/README.md`, then the matching area `README.md` and doc for system-wide topics; check the repo's `.omp/skills/` for project ones. Do not rediscover what is written down.
 
-   ```ts
-   function validEntry(overrides?: Partial<Entry>): Entry {
-     return { type: 'playing', status: 'online', duration: 10, render: () => 'test', ...overrides };
-   }
-
-   test('throws for non-positive duration', () => {
-     expect(() => validate([validEntry({ duration: 0 })])).toThrow('duration');
-   });
-   ```
-
-5. **Isolate side effects.** If a test mutates global/shared state (env vars, singletons, files, clocks), save and restore it in setup/teardown. Every test must leave the world exactly as it found it.
-
-6. **Exhaustively cover enum-like values.** If a function accepts a fixed closed set of valid inputs, test every member — loop over them if that's cleaner. Future additions to the set should break this test until covered; that's the point.
-
-**What not to do:**
-
-- Don't test implementation details. If refactoring internals without changing behavior breaks your test, the test is wrong.
-- Don't use mocks when real inputs are available. A mock is an assumption about how something else works. Assumptions rot; real inputs don't.
-- Don't write tests that pass regardless of whether the code works. If commenting out the function body still leaves the test green, the test is worthless.
-- Don't write one giant test per function. One property per test. A failure should tell you exactly what broke, not "something in this 40-line test is wrong."
-
-## When You're Stuck
-
-If you look at code and don't understand what it does, that is the code's fault, full stop — not a sign you need to try harder to read it. Do not power through. Do not guess and hope. Stop and fix the code so a lazy, stupid reader (you) can understand it on the next pass:
-
-1. **Name things precisely.** If a variable/function name doesn't tell you what it holds or does, rename it.
-2. **Extract and document.** If a block of logic is opaque, extract it into a named function with a stated contract.
-3. **Add types or structure.** If the shape of data flowing through is unclear, define it explicitly.
-4. **Add assertions.** If you're not sure something is true at a point in the code, assert it — now the program checks for you instead of you trusting your memory.
-5. **Add a test.** If you're not sure a piece of code does what you think, write a test. Now you know, and you'll be told the moment it stops being true.
-
-Do not try to be heroic. Do the boring thing. Make the code explain itself, then move on and never think about its internals again.
-
-## Rules for You Specifically, the AI Agent
-
-This section exists because the only reader of this file who needs it spelled out this bluntly is you. You are stupider than you are lazy: you will happily grind out a hundred lines of plausible-looking code to avoid admitting you don't understand the problem. Stop doing that.
-
-1. **Do not generate code you cannot explain.** Full stop, no exceptions for "it looked right" or "similar code elsewhere did this."
-2. **When something is getting complicated, stop and simplify.** A fix that keeps growing, or keeps spreading into more files, is a signal you picked the wrong approach — not a sign to push harder. Back up. Find the smaller path.
-3. **Document contracts as you go, not after.** Every function you write or touch gets a doc comment stating what it does. Every non-obvious type gets a comment stating what it represents. This is not optional and not something to batch up for "later cleanup."
-4. **Never suppress an error to make things pass.** A type error, a failing test, a lint warning is the computer reporting a bug. Fix the bug. Do not silence, skip, or work around the messenger.
-5. **Read the contract before you change the code.** Types, tests, docs — read what exists first. If nothing exists, that's a gap to fix before, not after, you change behavior.
-6. **Prefer small, verifiable changes.** One function, one module, one behavior at a time. Verify it. Move on. Do not rewrite several modules in one pass and hope it all fits together — you will get it wrong and you will not notice.
-7. **If you feel like you're forcing something to work, stop immediately.** That feeling is not a puzzle to push through, it's a signal the design is wrong. Step back and redesign the part that's fighting you, don't sand down the resistance until it compiles.
-8. **Never fake completion.** No stubs, no placeholders, no "TODO: implement this," no mocked-out fallback pretending to be the real thing, unless explicitly asked for scaffolding. If you can't finish something for real, say exactly what's missing — don't dress up an incomplete answer as done.
-9. **Always commit when a task is finished; never push unless told to.** When you finish a task, commit your changes before yielding. Do not run `git push` (or any equivalent that publishes commits to a remote) unless the user has explicitly asked you to push in the current conversation. A past instruction to push does not authorize future pushes.
-10. **Persist what you learn as a project skill (inside a repo) or a `~/Docs/` doc (system-wide); never as a global skill.** See the next section.
-
-## Persisting knowledge: project skills vs `~/Docs/`
-
-`autolearn` and `manage_skill` are disabled. Do not create global skills (`~/.omp/agent/managed-skills/`, `~/.omp/agent/skills/`): a skill there loads into every session on this machine, costs context in projects it has nothing to do with, and tends to record a single incident. Decide where a discovery belongs by what it is about:
-
-**1. Specific to one repository → project skill, and nothing else.**
-
-Write `<repo>/.omp/skills/<skill-name>/SKILL.md` with frontmatter `name` and a one-line `description` that says *when* to use it. Use it for a repeatable procedure or recurring trap of that repo (how to run its tests, a build step that must happen in order, a convention a future agent would otherwise break). Commit it with the repo. Prefer updating an existing project skill over adding a near-duplicate; fix a wrong one in place.
-
-Do NOT put repo-specific knowledge in `~/Docs/`, and do not add `docs/` pages or edit `AGENTS.md` for it unless the user asked for that.
-
-**2. System-wide, or not tied to any single folder → `~/Docs/<area>/<topic>.md`.**
-
-Use it for things about the machine and its tooling rather than one project: Omarchy config, Hyprland, Quickshell and Omarchy plugins, audio, GPU, networking, Wine, libvirt, git/GPG/keyring setup, dotfiles, hardware quirks, systemd services, omp itself. Organize by topic area, never by project name: a folder named after a single project (e.g. `smrt/`, `phermata/`) is wrong, since that knowledge is a project skill. `~/Docs/README.md` is the index of area folders; each folder has its own `README.md` listing its docs one line each. Create a new area folder when none fits and add it to the root index. `~/Docs/` is backed up in the dotfiles bare repo: `git --git-dir=$HOME/.dotfiles --work-tree=$HOME add Docs`, commit; never push unless asked.
-
-**Test:** if the fact would still matter after `cd` to a different project, it is system-wide (`~/Docs/`). If it only matters inside this repo, it is a project skill.
-
-**Before work**, `read` `~/Docs/README.md`, then the matching area `README.md` and doc for system-wide topics, and check the repo's `.omp/skills/` for project ones. Do not rediscover what is already written down.
-
-**What to write** (either place):
-
-- Non-obvious facts only: a root cause, the flag that fixed it, a surprising path, a command that must run in a specific order, a decision and its reason.
-- Format: `## <Problem / task>` with **Symptom**, **Cause**, **Fix** (commands in fenced blocks) where they apply. Keep exact commands, paths, flags, and error strings; drop narrative.
-- State preconditions (OS, tool versions, "only when X is installed") so a later reader can tell when it applies.
-- Do not record generic knowledge, things obvious from the code, or one-off events with no reusable fact. If nothing reusable was learned, write nothing.
+**What to write:** non-obvious facts only: a root cause, the flag that fixed it, a surprising path, a required command order, a decision and its reason. Format `## <Problem / task>` with **Symptom**, **Cause**, **Fix** (fenced commands) as applicable; keep exact commands, paths, flags, error strings; drop narrative. State preconditions (OS, tool versions, "only when X is installed"). Skip generic knowledge, anything obvious from the code, and one-off events with no reusable fact. Nothing reusable learned → write nothing.

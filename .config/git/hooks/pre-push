@@ -2,9 +2,9 @@
 # pre-push: before any push, GPG-resign any UNPUSHED commits that are not yet
 # signed, then abort the push and ask the user to run `git push` again.
 #
-# Rationale: during development, managed-skill auto-commits (and the dotfiles
-# survey) deliberately commit UNSIGNED so no fingerprint prompt fires while the
-# user may not be at the machine (commit.gpgsign=false is set locally on the
+# Rationale: during development, agent commits to the dotfiles repo (and the
+# dotfiles survey) deliberately commit UNSIGNED so no fingerprint prompt fires
+# while the user may not be at the machine (commit.gpgsign=false is set locally on the
 # dotfiles bare repo for exactly that reason). But when the user explicitly
 # pushes, they ARE present — so unpushed unsigned commits get signed here,
 # right before they would leave the machine. Already-pushed commits are NEVER

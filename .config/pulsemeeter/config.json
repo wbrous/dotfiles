@@ -401,7 +401,7 @@
 				"mute": false,
 				"flags": 0,
 				"external": false,
-				"primary": false,
+				"primary": true,
 				"channels": 1,
 				"channel_list": [
 					"MONO"
