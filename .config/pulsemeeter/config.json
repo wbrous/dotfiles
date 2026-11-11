@@ -590,7 +590,7 @@
 					66,
 					66
 				],
-				"mute": true,
+				"mute": false,
 				"flags": 0,
 				"external": false,
 				"primary": null,
@@ -615,8 +615,8 @@
 				"device_type": "sink",
 				"device_class": "hardware",
 				"volume": [
-					39,
-					39
+					68,
+					68
 				],
 				"mute": false,
 				"flags": 0,

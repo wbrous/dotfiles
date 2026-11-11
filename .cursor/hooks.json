@@ -1,4 +1,10 @@
 {
-  "hooks": {},
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "bash '/home/wils/.cursor/herdr-agent-state.sh' session"
+      }
+    ]
+  },
   "version": 1
 }

@@ -41,6 +41,10 @@ modelRoles:
   vision: anthropic/claude-opus-5-5:medium
   judge: opencode-zen/jev-1.13-free
   web: web/parallel
+  reviewer: opencode-go/muse-spark-1.3-contributor:max
+task:
+  agentModelOverrides:
+    reviewer: '@reviewer'
 personality: pragmatic
 retry:
   fallbackChains: {}
@@ -48,8 +52,8 @@ retry:
 secrets:
   enabled: false
 security:
-  enabled: false
-setupVersion: 2
+  enabled: true
+setupVersion: 3
 steeringMode: all
 symbolPreset: nerd
 theme:
@@ -57,3 +61,5 @@ theme:
   light: omarchy
 claudeResets:
   autoRedeem: 'no'
+update:
+  auto: true
