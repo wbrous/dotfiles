@@ -15,6 +15,15 @@
 // via plain Item x/y, using MouseArea's built-in `drag.target` — Qt's own
 // well-tested pointer-tracking, not hand-rolled delta math, which kept
 // drifting/overshooting under fast mouse movement.
+//
+// Japanese/Chinese/Korean input (any fcitx5 engine that is not a `keyboard-*`
+// entry) is typed on plain US, never Gallium. fcitx5 cannot move Hyprland's xkb
+// group on Wayland, so this plugin does it: when such an engine becomes the
+// current input method while Gallium is the xkb group, it switches every
+// keyboard to group 0 (US), and the cheat sheet stays hidden for as long as the
+// engine is current. Leaving the engine changes nothing, so whichever layout
+// the user cycles to (SUPER+I) stands. The current engine comes from the bar's
+// shared `InputMethodState` reader, so no extra poller runs here.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -28,6 +37,21 @@ Item {
 
   readonly property var untypedKeyboards: /^(hl-virtual-keyboard|power-button|sleep-button|lid-switch|video-bus)/
   property bool galliumActive: false
+
+  // True while an fcitx5 composition engine (mozc, hangul, ...) is the current
+  // input method. Empty `current` means the reader has no answer yet.
+  readonly property string currentInput: String(InputMethodState.state.current || "")
+  readonly property bool cjkActive: currentInput !== "" && currentInput.indexOf("keyboard-") !== 0
+
+  onCjkActiveChanged: {
+    if (cjkActive && galliumActive) switchProc.running = true
+  }
+
+  // Group 0 is plain US (see kb_layout in ~/.config/hypr/input.lua).
+  Process {
+    id: switchProc
+    command: ["hyprctl", "switchxkblayout", "all", "0"]
+  }
 
   function refresh() {
     if (queryProc.running) return
@@ -78,7 +102,7 @@ Item {
 
   PanelWindow {
     id: panel
-    visible: root.galliumActive
+    visible: root.galliumActive && !root.cjkActive
     color: "transparent"
     WlrLayershell.namespace: "gallium-cheatsheet"
     WlrLayershell.layer: WlrLayer.Overlay
