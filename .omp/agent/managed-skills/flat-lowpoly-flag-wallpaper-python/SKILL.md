@@ -36,7 +36,7 @@ The user uses this laptop while you work. `omarchy theme set` / `theme bg set` f
 
 ## Gotchas
 - `omarchy theme bg set` while on theme A makes the file A's remembered background; the hook only regenerates when PRIDE's remembered/live background is a `zz-generated-*` file. To opt in: the user switches to Pride, then picks the generated image there.
-- Generated files are named `zz-generated-<ns>.png` so they sort last and never become Pride's default image; hook prunes all but the new one and the one that was showing.
+- Generated files are named `zz-generated-<ns>.png` so they sort last and never become Pride's default image; hook order is generate -> delete other zz-generated files -> `omarchy theme bg set <new>` (delete-before-apply, so no dead entry lingers past the switch). Old image stays decoded in the shell during the crossfade; new renders from its own untouched file.
 - Hook detaches via `setsid` and logs to `~/.local/state/omarchy/pride-wallpaper.log`; `flock -n` stops pile-ups.
 - Edit tool: bodyless deletes must use CUT, an empty PUT deletes; re-read after each edit since tags/line numbers shift (several edits clobbered neighbouring code). When replacing a struct's fields, grep for every `.field` use in tests too.
 - Tests: raster has a brute-force differential test (fast span path vs per-pixel exact coverage on 4,500 random + sliver triangles); keep it when touching `inner_run`.
