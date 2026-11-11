@@ -1,6 +1,57 @@
 # Bare-repo dotfiles workflow
 
-`git init --bare $HOME/.dotfiles` with `status.showUntrackedFiles no`; scripted access via `GIT_DIR=$HOME/.dotfiles GIT_WORK_TREE=$HOME git <cmd>`.
+`git init --bare $HOME/.dotfiles` with `status.showUntrackedFiles no`, work tree `$HOME`, remote `origin` = `github.com/wbrous/dotfiles`. Scripted access without the shell function: `git --git-dir=$HOME/.dotfiles --work-tree=$HOME <cmd>` (not `GIT_DIR` env when going through omp's `pi.exec`, see `omp/extensions.md`).
+
+## Commands
+
+`dotfiles` is a bash function in `~/.bashrc` (tracked); it is not a binary, so non-bash shells and scripts must use the long git form.
+
+| Command | Does |
+|---|---|
+| `dotfiles <git args>` | plain git against the bare repo (`dotfiles status`, `dotfiles add -- <path>`, `dotfiles commit -m ...`) |
+| `dotfiles push` | resign-then-push in one command via `git-push-resign` (same flow as shadowed `git push`) |
+| `dotfiles autoadd` | stage everything under `~/Docs` (`~/.local/bin/dotfiles-autoadd`); nothing is committed or pushed |
+
+`dotfiles autoadd` contract: precondition `~/.dotfiles` and `~/Docs` exist (else exit 1); postcondition every new, modified, deleted, and renamed file under `Docs/` is staged and nothing outside `Docs/` is touched (paths already staged elsewhere stay staged). It honours the exclude list, so `*.swp`/`*~`/`*.bak` in Docs are skipped. Idempotent: a second run prints "already up to date". Then review `dotfiles diff --cached -- Docs` and commit with a real message. Why Docs only: it is the one tree where "add everything" is correct; the rest of `$HOME` is added one reviewed path at a time.
+
+## What is a dotfile (standards)
+
+A dotfile is **config written on purpose** by the user or their agent. If a theme change, a font change, or merely launching the app would modify the file, it is output and does not belong here.
+
+| Not a dotfile | Examples | Verdict tag |
+|---|---|---|
+| Theme/font-hook output | `zed/themes/omazed.json`, `~/.omp/agent/themes/omarchy.json`, `btop/themes/current.theme`, omarchy `shell.json`/`shell.toml`, the omazed-managed `theme-set` hook | `NO-GENERATED` |
+| App-saved state | pulsemeeter/Omacom/tern/strata/OBS/Pinta settings, `last-changelog-version`, Emulator.conf | `NO-GENERATED` |
+| Installer output | native-messaging hosts, omarchy `*.sample`, `herdr-omp-agent-state.ts` ("managed by herdr"), mise config rewritten by `mise use` | `NO-GENERATED` |
+| Other coding agents | `.claude`, `.codex`, `.gemini`, `.cursor`, `.copilot`, `.grok`, `.cline`, `.pi`, `.config/opencode`, `.config/devin`, ... (omp is the only agent) | `NO-AGENT` |
+| Project source | anything under `~/Projects` | `NO-PROJECT` |
+| Secrets/sessions | tokens, auth, history, sqlite, caches | `NO-SECRET` |
+| Runtime-critical at a live path | gpg config, pinentry, signing hooks | `NO-LIVE` |
+
+Exception to "other agents": `~/.agents/skills/` is the shared skill dir omp itself reads; real skill dirs there stay tracked, symlinks into `/usr/share/omarchy` do not.
+
+**The exclude list** `~/.config/dotfiles/exclude` (tracked) encodes the table as rooted patterns. Enable once per clone (bare-repo config is not versioned):
+```sh
+git --git-dir=$HOME/.dotfiles config core.excludesFile $HOME/.config/dotfiles/exclude
+```
+Effect: `dotfiles add <excluded>` refuses without `-f`, and excluded paths never show as untracked candidates. It does NOT affect already-tracked files; untrack those with `dotfiles rm --cached -- <path>` (file stays on disk) and add a rooted pattern. Check: `dotfiles ls-files -ci --exclude-standard` must print nothing.
+
+## Commit standards
+
+- NEVER `dotfiles commit -a`/`-am` and NEVER a message like `update`. `-a` sweeps in every tracked file some tool rewrote; that is exactly how 33 `update` commits filled the history with theme output.
+- Stage explicit paths (`dotfiles add -- <path>`), one logical change per commit, message says what the config does (`Add hypr monitor layout`, `Stop tracking <thing>`). Docs commits: `docs(<area>): <what>`.
+- Never push unasked. `dotfiles push` resigns own unpushed commits first.
+- Commit via `dotfiles commit` (the global gitleaks hook runs). Agent-made commits: `OMPCODE=1` is already in omp's bash env and adds the co-author trailer.
+
+## Docs structure (for docs created after `autoadd`)
+
+Everything under `~/Docs` is tracked automatically, so structure is the only gate:
+
+- `Docs/<area>/<topic>.md`; area = system topic (`git`, `omarchy`, `hyprland`, `wine`, ...), never a project name (project knowledge is `<repo>/.omp/skills/<name>/SKILL.md`, committed with that repo).
+- Every area folder has a `README.md` listing each doc, one line each (`- [topic.md](topic.md) - what it covers`). `Docs/README.md` indexes the area folders the same way. New area folder only when none fits, and add it to the root index in the same change.
+- A doc is `## <Problem>` sections with **Symptom**, **Cause**, **Fix** as applicable, exact commands/paths/flags/error strings, preconditions stated. Non-obvious facts only; no secrets, tokens, or session output.
+- No binaries or generated files in Docs; keep `*.bak`/`*.swp` out (the exclude list drops them anyway).
+- Workflow after writing/editing docs: `dotfiles autoadd` → `dotfiles diff --cached --stat -- Docs` → `dotfiles commit -m "docs(<area>): ..."`.
 
 ## gitleaks hook (modern CLI, no `protect`)
 
@@ -35,20 +86,23 @@ Machine layout: tracked `~/.local/share/gpg-fingerprint/{gpg-agent.conf,common.c
 
 _Migrated from: dotfiles-bare-repo-rebase-deletes-live-config_
 
-## Fan-out scout survey mechanics
+## Survey: `/dotfiles-scan`
 
-For 100+ `.config` entries: fan out scout subagents per cluster (per AI tool + misc), each returning one-line verdicts `DEF ADD` / `MAYBE` / `SHOULDN'T ADD`, grepping `token|secret|password|api[_-]?key|auth|credential|bearer|ghp_|glpat-|ctx7sk|figd_...`. Before staging any `DEF ADD` path, re-check against tracked state (`dotfiles ls-tree -r --name-only HEAD`) — scouts verdict already-tracked paths. On re-survey, diff tracked vs on-disk per cluster yourself first, then give each scout its narrowed 5–20 path list.
+`~/.omp/agent/extensions/dotfiles-scan.ts` (tracked) injects the survey procedure into the agent; scopes: `docs`, `config`, `local`, `home`. Order it enforces: (1) `dotfiles autoadd` + one descriptive Docs commit; (2) snapshot the tracked list, drop everything matched by the exclude list; (3) parallel read-only scouts, one line per path `<path> | ADD|MAYBE|NO-GENERATED|NO-AGENT|NO-PROJECT|NO-SECRET|NO-LIVE | reason`; (4) sequential commits of the `ADD`s; (5) report `COMMITTED` / `MAYBE` / `EXCLUDED`.
 
-Commit sequencing: the bare repo has a single shared index — NEVER run `add`+`commit` concurrently; sequence strictly one path at a time or one commit grabs both files. `git add` through a symlink fails (`pathspec ... is beyond a symbolic link`) — AI-tool `skills/<name>` dirs are usually symlinks into `~/.agents/skills` or `/usr/share/omarchy/...`; default MAYBE/skip.
+Mechanics that bite:
+- The bare repo has ONE shared index. NEVER run `add`+`commit` concurrently; one path (or one logical group) at a time, or one commit grabs both.
+- `git add` through a symlink fails (`pathspec ... is beyond a symbolic link`). Some `~/.agents/skills/<name>` are symlinks into `/usr/share/omarchy/default/agents/skills/`; skip those.
+- Scouts must say how a file got there (hand-written vs tool-written); that one fact decides most verdicts.
+- Re-check each `ADD` against `dotfiles ls-tree -r --name-only HEAD` before staging; scouts do not know what is already tracked.
+- Grep every candidate for `token|secret|password|api[_-]?key|auth[_-]?|credential|bearer|ghp_|glpat-|ctx7sk|figd_|AKIA` and one level into likely secret-bearing JSON (`mcpServers` blocks, `plugin_config`).
 
-_Migrated from: dotfiles-bare-repo-gitleaks-hook_
+Standing judgment calls on this machine (all `MAYBE`/`NO`, learned from earlier sweeps): third-party checkouts with their own `.git` (omafilee, qs-bitwarden, robzolkos plugins, Utils/omazen); Equicord `settings.json` is account-linked (only `settings/quickCss.css` is tracked); `cava` config has a third-party email in its header; evince print-settings names a home printer; `vykey` is a hand-written 993-line tool (ask before adding); 89 generated `.desktop` files and bin stubs; generated omarchy themes (pink, spectrum-os, aether, ame-quattro); lazy-lock.json and lockfiles; browser/Electron profiles; ssh, `private-keys-v1.d`, mitmproxy pems; `.omp` mcp/auth-broker/collab-hosts tokens and Context7 `ctx7sk-…` keys in any agent config.
 
-## Verdict map (this machine, Arch/Omarchy)
+## Pruned 2026-11-11
 
-Full sweeps 2026-08-28 through 2026-10-30. DEF ADD: `.config/hypr/**` (12 real files, not omarchy-store symlinks; plus `apps/tern.lua`), `.config/omarchy/plugins/wils.*`, `hooks/theme-set.d/{omarchy,20-zen,30-cider,10-owe}-sync.sh`, listed autostart/desktop files, `gh/hosts.yml` (no token), gtk-3.0/bookmarks, fcitx5 xcb.conf, tensaku/pulsemeeter/pupgui/aether configs, emulator conf, picker config, `.bash_logout`, `.gemini/projects.json`, 2026-10 hand-authored nvim/wireplumber/mimeapps/portals/strata/tern/cursor/uad files + listed `~/.local/bin` scripts + stencil `.desktop`s, 2026-10-30 `.gnupg/gpg-agent.conf` + Equicord `quickCss.css`.
+Tracked files went 347 → 232 in three forward commits (published history untouched; files stay on disk, only untracked). Removed: 14 other coding agents' trees, theme/font-hook output, app-saved state, installer output, `Projects/archive/omarchy-passkey` (29 files of project source), and the live-path `.gnupg/gpg-agent.conf` (byte-identical copy already in `~/.local/share/gpg-fingerprint/`). The full list is `~/.config/dotfiles/exclude`.
 
-MAYBE (skip by default): all vendor skill dirs (41 confirmed symlinks 2026-10-30), `.codex/.system/*`, claude synced/marketplaces/trash, grok docs/README, backups (`*.bak*`, `*.omarchy-upgrade-to-quattro.*`, hypr backups), stubs/regenerable (lazygit/lazydocker/gtk-4.0 zeros, lazy-lock.json, codexctl version-ids, copilot configs, orca/pi/opencode/udiskie/kilo/qwen herdr stubs, calibre/FigCraft/vectorcraft/photocraft/pdfcraft/Pinta/tern/strata/QtProject/tool_state, obs rtmp-services, fcitx5 except xcb, cava — third-party email in header, 117 omarchy lock-design QMLs), `.npmrc`/`.zshrc` one-liners, Equicord except quickCss (`settings.json` account-linked), demoted 2026-10-30 (qwen marker/settings, opencode cli/gitignore/package, omarchy shims, evince print-settings naming home printer, tern carly, dictation defaults, codex pets/AGENTS.md.disabled), `vykey` + desktop (hand-written 993-line tool, ask user), third-party checkouts with own `.git` (omafilee/qs-bitwarden/robzolkos plugins, Utils/omazen), 89 generated `.desktop`s + bin binaries/stubs/symlinks, generated omarchy themes (pink/spectrum-os/aether/ame-quattro).
+Evidence the cut came from: 33 commits titled `update` were bulk sweeps of tracked files that something else had rewritten, and it was the same files every time: `pulsemeeter/config.json` (18 commits), `omarchy/shell.json`, `Omacom/omawrite.conf`, terminal font-size lines, `zed/themes/omazed.json`, `~/.omp/agent/themes/omarchy.json`, the claude/pi theme files, `last-changelog-version`. If a path keeps showing up in an `update`-style commit, it is output: untrack it and add a rooted pattern to the exclude list.
 
-NO (never commit): Context7 `ctx7sk-…` across omp/codex/gemini/opencode configs, `.omp` mcp/auth-broker/collab-hosts tokens, claude credentials/backups/daemon, glab config, manicode/aether/wallhaven/bash_history/pi/hermes/convex/docker/cloudflared/opencode-service/obs-websocket/photocraft/passless/pulse/tern-host keys, copilot auth.db, Equicord settings, ssh, `private-keys-v1.d`, mitmproxy pems; browser/Electron profiles; sessions/history (`claude/{projects,history.jsonl,jobs,daemon}`, copilot session-state/store/db, grok sessions/memtrace/logs, cline, pi-acp, manicode, tern triples, t3); sqlite+wal/shm; tmp/build/dconf/logs/locks/sockets/pids.
-
-_Migrated from: dotfiles-survey-verdict-map_
+Left tracked on purpose: hypr, nvim, omarchy `plugins/wils.*` and the `theme-set.d` scripts, terminal/tmux/starship configs, `.local/bin` scripts, `.omp/agent/{config.yml,models.yml,APPEND_SYSTEM.md}` and the `dotfiles-scan`/`omarchy-theme-sync`/`repo-watch` extensions, shared `~/.agents/skills`, `mimeapps.list`, wireplumber/systemd/autostart units. Known soft spots, not pruned: `.config/git/{config,hooks/*}` are tracked at live paths (the live-path rule above says they should move to `~/.local/share/` with an install script), and `omarchy font` writes font sizes into the terminal configs, so those lines can still churn.

@@ -3,7 +3,7 @@
 System-wide knowledge: how this machine is set up and tooling facts that matter in any project. Repo-specific knowledge lives as project skills in each repo (`<repo>/.omp/skills/`), not here.
 
 - [auth-keyring/](auth-keyring/README.md) - GPG fingerprint gating, GNOME keyring autologin, passkeys, sudo/ssh auth
-- [git/](git/README.md) - hooks, push signing, branches/history, dotfiles bare repo, shims, GitHub/GitLab CI
+- [git/](git/README.md) - hooks, push signing, branches/history, dotfiles bare repo (`dotfiles autoadd`, standards, Docs structure), shims, GitHub/GitLab CI
 - [hyprland/](hyprland/README.md) - polkit, launching apps, keybindings, scaling/toggles
 - [quickshell/](quickshell/README.md) - QML animation, notifications plugin, indicators, omacale shell
 - [omarchy/](omarchy/README.md) - input, themes, plugins, apps, Zen, Cider, wallpapers
