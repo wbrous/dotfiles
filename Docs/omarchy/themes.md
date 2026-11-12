@@ -104,3 +104,8 @@ sudo -u "$user" XDG_RUNTIME_DIR=$runtime systemctl --user enable foo.service bar
 Remover mirrors it: `disable --now` as `$user`, then `sudo -u "$user" rm -f ...`, plus root-owned pieces with `sudo rm -f`. Use `$runtime`, not `${XDG_RUNTIME_DIR:?}` (root's is unset). Verify with `bash -n` + `shellcheck -S warning`, dry-run the deploy loop into `mktemp -d`.
 
 _Migrated from: omarchy-sudo-installer-user-units_
+
+## Custom Plymouth boot logo (e.g. pride-flag wordmark)
+**Symptom**: Want a recolored/custom boot splash logo without touching `/usr/share/omarchy` (read-only package).
+**Cause**: Boot logo is `/usr/share/plymouth/themes/omarchy/logo.png`, published only through `omarchy plymouth set <bg-hex> <text-hex> <logo.png>` (also updates the SDDM logo, runs `plymouth-set-default-theme` + `mkinitcpio -P`/`limine-mkinitcpio`). Needs interactive sudo (fingerprint then password), so an agent without a TTY cannot run it.
+**Fix**: Stock wordmark is 800x188 RGBA with soft alpha edges. Recolor by keeping its alpha and replacing RGB: build stripes with `magick -size 800x188 xc:none -fill ... -draw rectangle`, then `magick stripes.png \( logo.png -alpha extract \) -compose CopyOpacity -composite out.png`. Take bg/text hex from `~/.local/state/omarchy/current/theme/colors.toml` (`background`, `foreground`). Bisexual flag: `#D60270` / `#9B4F96` / `#0038A8` at 2:1:2. Restore with `omarchy plymouth reset`. Logo source kept at `~/.local/share/omarchy-bi/logo-bi.png`.
