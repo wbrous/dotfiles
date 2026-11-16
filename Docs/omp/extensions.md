@@ -113,3 +113,9 @@ The `managed-skill-dotfiles` extension itself is being deleted with the skill sy
 - Related hook idea worth reusing: hook the `tool_result` event (`{ toolName, input, isError }`), filter on the tool of interest, skip `isError`, and dedupe rapid same-target mutations with a per-name `inFlight` set. Guardrails that worked: only touch the single target path (never `add -A`); skip no-ops via `git diff --cached --quiet -- <path>`; never bypass gitleaks (`GIT_ALLOW_SECRETS=1` stays a human escape hatch), surfacing hook stderr via `sendMessage({ triggerTurn: true })`.
 
 _Migrated from: managed-skill-dotfiles-autosync-extension_
+
+## Reading Anthropic 5h/weekly usage from an extension
+
+**Symptom:** need subscription usage % inside an extension (omp docs don't document it; binary is compiled).
+
+**Fix:** `await ctx.modelRegistry.authStorage.usage.reports({ provider: "anthropic" })` returns `UsageReport[]`. Shared limits are `limits[].id === "anthropic:5h"` / `"anthropic:7d"`, value in `amount.usedFraction` (0..1); `anthropic:7d:opus|sonnet` are per-model tiers. omp caches reports ~5 min. The `context` event handler (`{messages}` in/out, custom message `{role:"custom", customType, content, display:false, attribution:"user", timestamp}`) runs before every LLM request, so it catches mid-run threshold crossings; `ctx.abort()` there cancels the run before the request is sent. Working example: `~/.omp/agent/extensions/usage-guard/` (`/usage-guard`). Compiled omp source is greppable: `grep -a -n 'pattern' $(readlink -f $(which omp))` then `sed -n`.
