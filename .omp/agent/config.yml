@@ -74,3 +74,34 @@ cycleOrder:
   - smol
   - default
   - slow
+statusLine:
+  preset: custom
+  showHookStatus: false
+  leftSegments:
+    - pi
+    - vim
+    - model
+    - mode
+    - collab
+    - stream
+    - path
+    - git
+    - pr
+    - context_pct
+    - cost
+    - status
+  rightSegments:
+    - session_name
+  separator: powerline-thin
+  segmentOptions:
+    model:
+      showThinkingLevel: true
+    path:
+      abbreviate: true
+      maxLength: 40
+      stripWorkPrefix: true
+    git:
+      showBranch: true
+      showStaged: true
+      showUnstaged: true
+      showUntracked: true
