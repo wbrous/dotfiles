@@ -20,10 +20,10 @@
 local M = {}
 
 M.default_pairs = {
-  { "h", "y" },
-  { "j", "h" },
-  { "k", "a" },
-  { "l", "e" },
+  { "h", "m" },
+  { "j", "n" },
+  { "k", "e" },
+  { "l", "i" },
 }
 
 local defaults = {
@@ -102,9 +102,10 @@ local descriptions = {
   j = "cursor down",
   k = "cursor up",
   l = "cursor right",
-  y = "yank",
-  a = "insert after cursor",
+  m = "set mark",
+  n = "next search match",
   e = "end of word",
+  i = "insert",
 }
 
 function M.help()

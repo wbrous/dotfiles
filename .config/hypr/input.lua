@@ -7,7 +7,7 @@ hl.config({
   input = {
     -- Use multiple keyboard layouts and switch between them with Left Alt + Right Alt.
     kb_layout = "us,us",
-    kb_variant = ",gallium",
+    kb_variant = ",colemak_dh",
     kb_options = "caps:backspace,grp:alts_toggle",
 
     -- Change speed of keyboard repeat.

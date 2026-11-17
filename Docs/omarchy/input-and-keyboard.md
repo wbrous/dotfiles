@@ -85,3 +85,13 @@ _Migrated from: omarchy-add-japanese-kanji-input_
 - Renaming the plugin: rename dir, doc comments, `descriptions` table (each letter's own default vim meaning, for `:XHelp`), `XToggle`/`XHelp` commands, augroup, `vim.notify` prefixes, and the `require` in `keymaps.lua`. Then `grep -rin "<oldname>" ~/.config/nvim`.
 
 _Migrated from: omarchy-colemak-dh-setup_
+
+## Removing an fcitx5 engine / swapping the alt layout (current state)
+
+**Current state:** `input.lua` uses `kb_variant = ",colemak_dh"` (stock `us(colemak_dh)`, no custom XKB needed); Mozc removed from fcitx; `wils.gallium-cheatsheet` dropped from `plugins[]` in `~/.config/omarchy/shell.json` (plugins are enabled only if referenced there, or for first-party ones, unless in `disabledPlugins[]`); nvim pairs are h↔m, j↔n, k↔e, l↔i (the plugin dir is still named `gallium`). The Gallium variant remains in `/usr/share/X11/xkb/symbols/us`.
+
+**Symptom:** Engine deleted from `~/.config/fcitx5/profile` but typing is still hiragana, and `fcitx5-remote -n` says `mozc`.
+
+**Cause:** The running fcitx5 rewrites `profile` on exit/reload, putting the engine back.
+
+**Fix:** `pkill -x fcitx5`, edit `profile` (only `keyboard-us`, `DefaultIM=keyboard-us`), then `setsid fcitx5 -d`. Verify `fcitx5-remote -n` = `keyboard-us`. Editing the file while fcitx5 runs does nothing.
