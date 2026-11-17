@@ -42,6 +42,8 @@ That is the code's fault. Don't power through or guess; make the next pass easy:
 
 When a task is finished, commit before yielding. Never `git push` (or publish commits) unless the user asked for it in the current conversation; a past instruction authorizes nothing now.
 
+Every branch you create MUST be named with the prefix `wbrous/`. Nested paths are fine (`wbrous/foo/bar`), but the name must start with `wbrous/`. Never create a branch without it.
+
 ## Persisting Knowledge
 
 Never create global skills (`~/.omp/agent/managed-skills/`, `~/.omp/agent/skills/`): they load into every session. Place a discovery by what it is about; if it would still matter after `cd` to another project, it is system-wide.
