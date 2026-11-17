@@ -123,3 +123,16 @@ omarchy-shell -q notifications dismissAll
 ```
 
 _Migrated from: omarchy-notification-corner-placement, omarchy-notif-dnd-snooze-debug, omarchy-notifications-plugin-architecture_
+
+## Merging upstream rewrites into the clone (v2.0.0 deck rewrite)
+
+**Symptom:** after `omarchy update`, upstream `omarchy.notifications` has a different file layout (`Store.js`, `Toast.qml`, `Delivery.js`, `Layout.js`...) and the clone (`Service.qml`, `NotificationLogic.js`, `components/NotificationCard.qml`) is a stale point-in-time copy.
+
+**Cause:** clones are never updated; no git base is kept. Old upstream versions are recoverable from `/var/cache/pacman/pkg/omarchy-dev-*.pkg.tar.zst` (`tar --zstd -x usr/share/omarchy/shell/plugins/notifications`); diff the closest one against the clone to list your customizations.
+
+**Fix (done 2026-11-16):** back up the clone outside `plugins/` (`~/.local/state/wils.notifications.v1-backup-*`), copy upstream files in, re-apply customizations on the new base:
+- `Delivery.deckMargins` returns `{bottom,right}`; clipper in `Service.qml` is bottom-anchored; entry/leave offsets use `+travel`; `reachable()` measures from the bottom.
+- Max-3 + backlog: `pendingKeys`/`queued` reservation flag, `admit()`, `releaseOnePending()` (250ms `pendingPacer`), `visibleKeys()`. Overflow pill = `components/OverflowIndicator.qml`, hidden while snoozing.
+- Right-click: `Toast.dismissAllRequested` -> `service.snoozeAndClear()` (snooze first, then close only visible keys, backlog survives). Hot-zone `PanelWindow` per screen, 10s idle-out. IPC `snoozeAndClear` kept for keybind. Hover ✕ removed.
+- `probe` reports `queued` and `snoozing`.
+- Edits to `Service.qml` often need `omarchy restart shell` (not hot-reload) to take effect; that restart also kills the calling bash session, so test in a later call.
