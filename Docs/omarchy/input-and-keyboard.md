@@ -38,9 +38,9 @@ _Migrated from: omarchy-add-japanese-kanji-input_
 ```lua
 kb_layout = "us,us",
 kb_variant = "<slot1-variant>,<slot2-variant>",
-kb_options = "caps:backspace,grp:alts_toggle",
+kb_options = "caps:backspace",
 ```
-- `grp:alts_toggle` = Left Alt + Right Alt switches slots. Empty variant = plain QWERTY in that slot (e.g. `kb_variant = ",gallium"`).
+- `grp:alts_toggle` (Left Alt + Right Alt) switches slots but is NOT used here: Alt+Alt is the dictation trigger. Switch layouts with SUPER+I instead. Empty variant = plain QWERTY in that slot (e.g. `kb_variant = ",gallium"`).
 - Apply live with `hyprctl reload` — but see the caching gotcha below.
 - To temporarily disable: comment the three lines with `--` and add plain single-layout equivalents below (`kb_layout = "us"`, `kb_options = "caps:backspace"`).
 
