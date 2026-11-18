@@ -5,7 +5,7 @@
 #
 # Precondition: ~/.config/Multica/themes/omarchy/manifest.json exists (the
 # folder is only maintained once Multica has it installed); else exit 0.
-# Postcondition: theme.css holds the same palette under .theme-light and
+# Postcondition: the running Multica desktop app is killed; theme.css holds the same palette under .theme-light and
 # .theme-dark, so the theme looks right whichever mode Multica is in.
 set -euo pipefail
 
@@ -94,3 +94,7 @@ cat >"$tmp" <<CSS
 }
 CSS
 mv "$tmp" "$THEME_DIR/theme.css"
+
+# Multica reads theme.css at launch, so close the desktop app (not the
+# `multica daemon`) to make the next launch pick up the new colors.
+pkill -x multica-desktop || true
