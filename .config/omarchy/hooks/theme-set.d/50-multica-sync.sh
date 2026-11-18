@@ -55,7 +55,7 @@ cat >"$tmp" <<CSS
   --muted: ${c[lighter_background]};
   --muted-foreground: $(mix 72);
   --faint-foreground: $(mix 55);
-  --accent: ${c[lighter_background]};
+  --accent: color-mix(in srgb, ${c[accent]} 30%, ${c[lighter_background]});
   --accent-foreground: $fg;
   --border: ${c[muted]};
   --input: ${c[muted]};
