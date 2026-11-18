@@ -5,7 +5,7 @@
 #
 # Precondition: ~/.config/Multica/themes/omarchy/manifest.json exists (the
 # folder is only maintained once Multica has it installed); else exit 0.
-# Postcondition: the running Multica desktop app is killed; theme.css holds the same palette under .theme-light and
+# Postcondition: a running Multica desktop app is restarted; theme.css holds the same palette under .theme-light and
 # .theme-dark, so the theme looks right whichever mode Multica is in.
 set -euo pipefail
 
@@ -95,6 +95,16 @@ cat >"$tmp" <<CSS
 CSS
 mv "$tmp" "$THEME_DIR/theme.css"
 
-# Multica reads theme.css at launch, so close the desktop app (not the
-# `multica daemon`) to make the next launch pick up the new colors.
-pkill -x multica-desktop || true
+# Multica reads theme.css at launch. If the desktop app is open, close it (not
+# the `multica daemon`) and start it again so the new colors show up. A closed
+# app stays closed.
+if pgrep -x multica-desktop >/dev/null; then
+  pkill -x multica-desktop
+  # Chromium needs a moment to release its profile lock; relaunching earlier
+  # just hands the new instance to the dying one and it exits.
+  for _ in {1..50}; do
+    pgrep -x multica-desktop >/dev/null || break
+    sleep 0.1
+  done
+  setsid uwsm-app -- multica-desktop >/dev/null 2>&1 &
+fi
