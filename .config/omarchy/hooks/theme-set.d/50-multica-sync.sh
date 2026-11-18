@@ -40,9 +40,9 @@ cat >"$tmp" <<CSS
   --page-canvas: $bg;
   --surface: $bg;
   --surface-foreground: $fg;
-  --surface-raised: ${c[lighter_background]};
-  --surface-hover: ${c[lighter_background]};
-  --surface-selected: color-mix(in srgb, ${c[accent]} 22%, $bg);
+  --surface-raised: $(mix 7);
+  --surface-hover: $(mix 14);
+  --surface-selected: color-mix(in srgb, ${c[accent]} 28%, $bg);
   --surface-selected-foreground: $fg;
   --surface-border: ${c[muted]};
   --foreground: $fg;
@@ -52,10 +52,10 @@ cat >"$tmp" <<CSS
   --primary-foreground: ${c[background]};
   --secondary: ${c[lighter_background]};
   --secondary-foreground: $fg;
-  --muted: ${c[lighter_background]};
+  --muted: $(mix 14);
   --muted-foreground: $(mix 72);
   --faint-foreground: $(mix 55);
-  --accent: color-mix(in srgb, ${c[accent]} 30%, ${c[lighter_background]});
+  --accent: color-mix(in srgb, ${c[accent]} 30%, $(mix 7));
   --accent-foreground: $fg;
   --border: ${c[muted]};
   --input: ${c[muted]};
@@ -79,7 +79,7 @@ cat >"$tmp" <<CSS
   --chart-3: ${c[green]};
   --chart-4: ${c[yellow]};
   --chart-5: ${c[magenta]};
-  --tooltip: ${c[lighter_background]};
+  --tooltip: $(mix 14);
   --tooltip-foreground: $fg;
   --palette-red: ${c[red]};
   --palette-orange: ${c[orange]};
