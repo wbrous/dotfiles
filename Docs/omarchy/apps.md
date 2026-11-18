@@ -39,3 +39,9 @@ On Arch this is **python-yq** 4.1.2 (jq wrapper), not go-yq — `-y` is required
 **Gotchas:** `~/.local/share/omp/` is NOT the agent dir — real data is `~/.omp/agent/`; remove a stray empty `~/.local/share/omp/` (it causes "No model selected"). Launching `omp` for a smoke test may recreate it — clean up after. Verify with `bash -n`, double-run for idempotency, `python3 -m json.tool` on the JSON, schema-key diff; back up/restore `config.yml` around mutating tests. An `omp -p` smoke run failing on missing API keys before `session_start` is expected and not an extension bug.
 
 _Migrated from: omp-omarchy-theme-sync_
+
+## Syncing the Multica theme with Omarchy
+
+**Symptom:** Multica (desktop app) custom theme `omarchy` should follow the active Omarchy theme.
+
+**Fix:** `~/.config/omarchy/hooks/theme-set.d/50-multica-sync.sh` (tracked, executable) reads `~/.local/state/omarchy/current/theme/colors.toml` and rewrites `~/.config/Multica/themes/omarchy/theme.css` (generated, NOT tracked; `manifest.json` is tracked and its existence gates the hook). Same palette is emitted under `.theme-light, .theme-dark`. Pick "Omarchy" once in Multica Settings -> Appearance. Variables come from Multica's `docs/theming.md` reference (beta, may change).

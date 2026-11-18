@@ -1,0 +1,7 @@
+{
+  "apiVersion": 1,
+  "id": "omarchy",
+  "name": "Omarchy",
+  "version": "0.1.0",
+  "description": "Auto-synced theme through Omarchy hooks"
+}
