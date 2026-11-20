@@ -99,3 +99,6 @@ window_title = "{hostname}: {workspace}"
 agent_panel_sort = "spaces"
 [ui.toast]
 delivery = "system"
+
+[update]
+version_check = false
