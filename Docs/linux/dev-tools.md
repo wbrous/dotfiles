@@ -42,3 +42,8 @@ Resource filtering only replaces `${prop}` (with braces); `$prop` stays literal.
 **Renaming a plugin:** `git mv` dirs/files (keeps history), edit package/class lines, update `paper-plugin.yml` (`name`, `prefix`, `main`, `bootstrapper`, `loader`, `website`) and `pom.xml` (`artifactId`, `name`). Grep case-insensitively for the old name in `src` and `pom.xml`; `.idea/`, `*.iml`, `target/`, `dependency-reduced-pom.xml` are gitignored and regenerate.
 
 _Migrated from: maven-build-without-system-mvn-intellij-bundled_
+
+## LocalSend shows a black window (Wayland, AMD Strix)
+**Symptom**: window opens black; stderr: `Failed to create OpenGL context: No available configurations for the given pixel format`, then `FL_IS_COMPOSITOR(self)` assertion spam.
+**Cause**: Flutter GTK embedder can't get an EGL config on native Wayland.
+**Fix**: run with `GDK_BACKEND=x11` (XWayland). `LIBGL_ALWAYS_SOFTWARE=1` alone does NOT fix it. Persisted via `~/.local/share/applications/localsend.desktop` (`Exec=env GDK_BACKEND=x11 localsend`); from a terminal use `GDK_BACKEND=x11 localsend`.
